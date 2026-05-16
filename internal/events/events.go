@@ -52,7 +52,7 @@ func (c Client) query(ctx context.Context, cfg config.Config, query string) (str
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("ClickHouse is not reachable on 127.0.0.1:%d: %w\nstart the stack with `honch sandbox start`, then check health with `honch sandbox status`", cfg.Ports.ClickHouse, err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
