@@ -11,10 +11,41 @@ import (
 
 	"github.com/honch/sdk/tools/sandbox/internal/config"
 	"github.com/honch/sdk/tools/sandbox/internal/ui"
+	"github.com/spf13/cobra"
 )
 
 type logOptions struct {
 	Tail int
+}
+
+func newLogsCommand(deps Dependencies) *cobra.Command {
+	var tail int
+	cmd := &cobra.Command{
+		Use:   "logs [stack|device|proxy]",
+		Short: "Print recent sandbox logs",
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 1 {
+				return errors.New(ui.FormatError("too many log targets", []ui.Row{
+					{Key: "required", Value: "honch sandbox logs [stack|device|proxy]"},
+					{Key: "example", Value: "honch sandbox logs device"},
+				}))
+			}
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, cfg, _, err := loadRuntime(deps)
+			if err != nil {
+				return err
+			}
+			target := "stack"
+			if len(args) == 1 {
+				target = args[0]
+			}
+			return printLogs(cmd.OutOrStdout(), root, cfg, target, logOptions{Tail: tail})
+		},
+	}
+	cmd.Flags().IntVar(&tail, "tail", 80, "number of recent log lines to print per file")
+	return cmd
 }
 
 func printLogs(out io.Writer, root string, cfg config.Config, target string, opts logOptions) error {
