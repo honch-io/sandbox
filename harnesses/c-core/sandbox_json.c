@@ -7,6 +7,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * Minimal JSON reader for developer-only newline-delimited control messages.
+ * This is not a general JSON library: harness controls use top-level ASCII
+ * fields and raw object forwarding. Unicode escape sequences are validated,
+ * but decoded string output substitutes them with '?' instead of UTF-8.
+ */
+
 typedef struct json_slice {
     const char *start;
     const char *end;
@@ -270,6 +277,7 @@ static int copy_json_string(json_slice_t slice, char *out, size_t out_size)
                     return 0;
                 }
                 cursor += 4;
+                /* Control strings are ASCII; keep escape handling bounded. */
                 ch = '?';
                 break;
             default:
