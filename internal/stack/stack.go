@@ -136,7 +136,7 @@ func (s Service) resolveCommandDir(repoPath string, workingDir string) string {
 }
 
 func (s Service) startBackground(ctx context.Context, dir string, cfg config.Config, command config.CommandConfig) error {
-	running, err := s.backgroundAlreadyRunning(ctx, cfg, command.Repo)
+	running, err := s.backgroundAlreadyRunning(ctx, cfg, command)
 	if err != nil {
 		return err
 	}
@@ -176,9 +176,9 @@ func (s Service) startBackground(ctx context.Context, dir string, cfg config.Con
 	return s.writePID(cfg, command.Repo, cmd.Process.Pid)
 }
 
-func (s Service) backgroundAlreadyRunning(ctx context.Context, cfg config.Config, repo string) (bool, error) {
+func (s Service) backgroundAlreadyRunning(ctx context.Context, cfg config.Config, command config.CommandConfig) (bool, error) {
 	port := 0
-	switch repo {
+	switch command.Repo {
 	case "capture":
 		port = cfg.Ports.Capture
 	case "worker":
@@ -192,11 +192,11 @@ func (s Service) backgroundAlreadyRunning(ctx context.Context, cfg config.Config
 		return false, nil
 	}
 	_ = conn.Close()
-	pid, ok := readPIDFile(filepath.Join(s.Root, cfg.Sandbox.StateDir, "pids", repo+".pid"))
-	if ok && processAlive(pid) {
+	pid, ok := readPIDFile(filepath.Join(s.Root, cfg.Sandbox.StateDir, "pids", command.Repo+".pid"))
+	if ok && processAlive(pid) && processCommandMatches(pid, command.Args) {
 		return true, nil
 	}
-	return false, fmt.Errorf("%s port 127.0.0.1:%d is already in use by a non-sandbox process", repo, port)
+	return false, fmt.Errorf("%s port 127.0.0.1:%d is already in use by a non-sandbox process", command.Repo, port)
 }
 
 func (s Service) waitForBackgroundPorts(ctx context.Context, cfg config.Config, timeout time.Duration) error {
@@ -266,6 +266,18 @@ func processAlive(pid int) bool {
 		return false
 	}
 	return syscall.Kill(pid, 0) == nil
+}
+
+func processCommandMatches(pid int, args []string) bool {
+	if pid <= 0 || len(args) == 0 {
+		return false
+	}
+	out, err := exec.Command("ps", "-p", fmt.Sprint(pid), "-o", "command=").Output()
+	if err != nil {
+		return false
+	}
+	command := strings.TrimSpace(string(out))
+	return strings.Contains(command, strings.Join(args, " "))
 }
 
 func (s Service) stopBackgroundProcesses(cfg config.Config) error {

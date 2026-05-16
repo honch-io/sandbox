@@ -42,7 +42,7 @@ func writeProxyMode(root string, cfg config.Config, mode proxy.Mode) error {
 
 func startProxyProcess(root string, cfg config.Config) (*os.Process, error) {
 	if portIsOpen(context.Background(), cfg.Ports.Proxy, 200*time.Millisecond) {
-		if pid, ok := readPID(proxyPIDPath(root, cfg)); ok && processAlive(pid) {
+		if pid, ok := readPID(proxyPIDPath(root, cfg)); ok && processAlive(pid) && processCommandContains(pid, "sandbox proxy-serve") {
 			_ = appendProxyLog(root, cfg, fmt.Sprintf("proxy already running on 127.0.0.1:%d\n", cfg.Ports.Proxy))
 			return nil, nil
 		}
@@ -228,6 +228,17 @@ func processAlive(pid int) bool {
 		return false
 	}
 	return syscall.Kill(pid, 0) == nil
+}
+
+func processCommandContains(pid int, fragment string) bool {
+	if pid <= 0 || fragment == "" {
+		return false
+	}
+	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "command=").Output()
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(out), fragment)
 }
 
 func waitForPortReady(ctx context.Context, port int, pid int, timeout time.Duration) error {

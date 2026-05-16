@@ -1304,6 +1304,31 @@ func TestStartProxyProcessRejectsUnownedPortListener(t *testing.T) {
 	}
 }
 
+func TestStartProxyProcessRejectsPortWithStaleLivePID(t *testing.T) {
+	rootDir := t.TempDir()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	cfg := configForTest()
+	cfg.Ports.Proxy = listener.Addr().(*net.TCPAddr).Port
+	if err := writePIDFile(proxyPIDPath(rootDir, cfg), os.Getpid()); err != nil {
+		t.Fatal(err)
+	}
+
+	proc, err := startProxyProcess(rootDir, cfg)
+	if err == nil {
+		t.Fatal("startProxyProcess accepted an unrelated live PID as proxy owner")
+	}
+	if proc != nil {
+		t.Fatalf("startProxyProcess returned process for unrelated listener: %+v", proc)
+	}
+	if !strings.Contains(err.Error(), "already in use") {
+		t.Fatalf("error did not explain port ownership: %v", err)
+	}
+}
+
 func TestWaitForRunnerReadyTimesOutWithoutReadyMarker(t *testing.T) {
 	logPath := filepath.Join(t.TempDir(), "device.log")
 	if err := os.WriteFile(logPath, []byte("booting\n"), 0o600); err != nil {
