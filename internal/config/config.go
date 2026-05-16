@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -68,11 +70,18 @@ func Load(root string) (Config, error) {
 	v.SetConfigName(".honch-sandbox")
 	v.SetConfigType("yaml")
 	v.AddConfigPath(root)
+	rootConfigPath := ""
 	if err := v.MergeInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !errors.As(err, &notFound) {
 			return Config{}, fmt.Errorf("read config: %w", err)
 		}
+	} else {
+		rootConfigPath = v.ConfigFileUsed()
+	}
+	explicitEndpointURL, err := configFileSetsEndpointURL(rootConfigPath)
+	if err != nil {
+		return Config{}, fmt.Errorf("read config: %w", err)
 	}
 
 	var cfg Config
@@ -82,17 +91,36 @@ func Load(root string) (Config, error) {
 	if cfg.Sandbox.StateDir == "" {
 		cfg.Sandbox.StateDir = filepath.Join(root, ".honch-sandbox")
 	}
-	cfg.Sandbox.EndpointURL = resolvedEndpointURL(cfg)
+	cfg.Sandbox.EndpointURL = resolvedEndpointURL(cfg, explicitEndpointURL)
 	return cfg, nil
 }
 
-func resolvedEndpointURL(cfg Config) string {
+func resolvedEndpointURL(cfg Config, explicitEndpointURL bool) string {
 	const defaultCapturePort = 8001
 	const defaultEndpointURL = "http://127.0.0.1:8001"
-	if cfg.Sandbox.EndpointURL == "" || (cfg.Sandbox.EndpointURL == defaultEndpointURL && cfg.Ports.Capture != defaultCapturePort) {
+	if cfg.Sandbox.EndpointURL == "" || (!explicitEndpointURL && cfg.Sandbox.EndpointURL == defaultEndpointURL && cfg.Ports.Capture != defaultCapturePort) {
 		return fmt.Sprintf("http://127.0.0.1:%d", cfg.Ports.Capture)
 	}
 	return cfg.Sandbox.EndpointURL
+}
+
+func configFileSetsEndpointURL(path string) (bool, error) {
+	if path == "" {
+		return false, nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	var raw struct {
+		Sandbox struct {
+			EndpointURL *string `yaml:"endpoint_url"`
+		} `yaml:"sandbox"`
+	}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return false, err
+	}
+	return raw.Sandbox.EndpointURL != nil && strings.TrimSpace(*raw.Sandbox.EndpointURL) != "", nil
 }
 
 func setDefaults(v *viper.Viper) {

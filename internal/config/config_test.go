@@ -54,6 +54,27 @@ func TestLoadDerivesDefaultEndpointFromCapturePortOverride(t *testing.T) {
 	}
 }
 
+func TestLoadPreservesExplicitDefaultEndpointOverride(t *testing.T) {
+	root := t.TempDir()
+	override := []byte(`
+ports:
+  capture: 19001
+sandbox:
+  endpoint_url: http://127.0.0.1:8001
+`)
+	if err := os.WriteFile(filepath.Join(root, ".honch-sandbox.yaml"), override, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.Sandbox.EndpointURL != "http://127.0.0.1:8001" {
+		t.Fatalf("EndpointURL = %q", cfg.Sandbox.EndpointURL)
+	}
+}
+
 func TestLoadRejectsInvalidOverride(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, ".honch-sandbox.yaml"), []byte("ports:\n  proxy: nope\n"), 0o600); err != nil {
