@@ -69,13 +69,14 @@ func startProxyProcess(root string, cfg config.Config) (*os.Process, error) {
 		_ = logFile.Close()
 		return nil, err
 	}
+	pid := cmd.Process.Pid
 	if err := cmd.Process.Release(); err != nil {
 		_ = logFile.Close()
 		return nil, err
 	}
 	_ = logFile.Close()
-	_ = writePIDFile(proxyPIDPath(root, cfg), cmd.Process.Pid)
-	if err := waitForPortReady(context.Background(), cfg.Ports.Proxy, cmd.Process.Pid, 5*time.Second); err != nil {
+	_ = writePIDFile(proxyPIDPath(root, cfg), pid)
+	if err := waitForPortReady(context.Background(), cfg.Ports.Proxy, pid, 5*time.Second); err != nil {
 		return nil, err
 	}
 	return cmd.Process, nil
@@ -136,12 +137,13 @@ func startRunnerSupervisor(root string, cfg config.Config, adapter string, targe
 		_ = logFile.Close()
 		return nil, err
 	}
+	pid := cmd.Process.Pid
 	if err := cmd.Process.Release(); err != nil {
 		_ = logFile.Close()
 		return nil, err
 	}
 	_ = logFile.Close()
-	if err := waitForRunnerReady(context.Background(), logPath, cmd.Process.Pid, runnerReadyTimeout()); err != nil {
+	if err := waitForRunnerReady(context.Background(), logPath, pid, runnerReadyTimeout()); err != nil {
 		return nil, err
 	}
 	return cmd.Process, nil
