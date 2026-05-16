@@ -42,7 +42,7 @@ type WaitStep struct {
 func Load(path string) (Scenario, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Scenario{}, err
+		return Scenario{}, fmt.Errorf("read scenario %q: %w", path, err)
 	}
 	var sc Scenario
 	if err := yaml.Unmarshal(data, &sc); err != nil {

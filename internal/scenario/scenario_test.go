@@ -56,6 +56,21 @@ func TestLoadRejectsStepWithoutAction(t *testing.T) {
 	}
 }
 
+func TestLoadReturnsFriendlyReadError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.yaml")
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load accepted a missing file")
+	}
+	if !strings.Contains(err.Error(), "read scenario") {
+		t.Fatalf("error did not explain the file read failure: %v", err)
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Fatalf("error did not include the scenario path: %v", err)
+	}
+}
+
 func TestLoadRejectsNegativeWaitDuration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "negative-wait.yaml")
 	if err := os.WriteFile(path, []byte(`
