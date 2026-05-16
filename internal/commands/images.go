@@ -108,7 +108,7 @@ func pullDockerImage(ctx context.Context, stdout io.Writer, stderr io.Writer, im
 	if image == "" {
 		return nil
 	}
-	return ui.WithSpinner(ctx, stderr, "pulling "+image, func() error {
+	return ui.WithSpinnerDone(ctx, stderr, "pulling "+image, "pulled "+image, func() error {
 		pullCtx, cancel := context.WithTimeout(ctx, dockerImagePullTimeout)
 		defer cancel()
 		cmd := exec.CommandContext(pullCtx, "docker", "pull", image)

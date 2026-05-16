@@ -45,6 +45,10 @@ func SetPlain(enabled bool) {
 	plain = enabled || os.Getenv("NO_COLOR") != ""
 }
 
+func IsPlain() bool {
+	return plain
+}
+
 func Heading(text string) string {
 	return render(accent, text)
 }

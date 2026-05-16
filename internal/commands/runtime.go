@@ -11,6 +11,7 @@ import (
 
 	"github.com/honch/sdk/tools/sandbox/internal/config"
 	"github.com/honch/sdk/tools/sandbox/internal/session"
+	"github.com/honch/sdk/tools/sandbox/internal/ui"
 )
 
 func loadRuntime(deps Dependencies) (string, config.Config, session.Manager, error) {
@@ -67,6 +68,9 @@ func confirm(in io.Reader, out io.Writer, prompt string) (bool, error) {
 	answer, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return false, err
+	}
+	if !ui.IsPlain() {
+		_, _ = fmt.Fprint(out, "\033[1A\r\033[2K")
 	}
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	return answer == "y" || answer == "yes", nil

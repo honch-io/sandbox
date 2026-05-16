@@ -135,32 +135,31 @@ func newStartCommand(deps Dependencies) *cobra.Command {
 					return true, nil
 				}
 			}
-			if err := ui.WithSpinner(cmd.Context(), cmd.ErrOrStderr(), "starting local stack", func() error {
-				return service.Start(cmd.Context(), cfg)
+			if err := ui.WithSpinnerDone(cmd.Context(), cmd.ErrOrStderr(), "starting sandbox", "sandbox has been started", func() error {
+				if err := service.Start(cmd.Context(), cfg); err != nil {
+					return err
+				}
+				proxyProc, err := startProxyProcess(root, cfg)
+				if err != nil {
+					return err
+				}
+				proxyPID := existingState.Proxy.PID
+				if proxyProc != nil {
+					proxyPID = proxyProc.Pid
+				}
+				state := session.State{
+					StartedAt: time.Now().UTC(),
+					Stack:     session.StackState{Running: true},
+					Runner:    existingState.Runner,
+					Proxy:     session.ProxyState{Mode: proxy.ModeOnline.String(), Port: cfg.Ports.Proxy, PID: proxyPID},
+				}
+				return manager.Save(state)
 			}); err != nil {
 				if errors.Is(err, stack.ErrMigrationDeclined) {
 					return fmt.Errorf("start cancelled before migrations")
 				}
 				return err
 			}
-			proxyProc, err := startProxyProcess(root, cfg)
-			if err != nil {
-				return err
-			}
-			proxyPID := existingState.Proxy.PID
-			if proxyProc != nil {
-				proxyPID = proxyProc.Pid
-			}
-			state := session.State{
-				StartedAt: time.Now().UTC(),
-				Stack:     session.StackState{Running: true},
-				Runner:    existingState.Runner,
-				Proxy:     session.ProxyState{Mode: proxy.ModeOnline.String(), Port: cfg.Ports.Proxy, PID: proxyPID},
-			}
-			if err := manager.Save(state); err != nil {
-				return err
-			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Heading("sandbox started"))
 			return nil
 		},
 	}
@@ -311,7 +310,7 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 		return err
 	}
 	var binary string
-	if err := ui.WithSpinner(cmd.Context(), cmd.ErrOrStderr(), "building c-core harness", func() error {
+	if err := ui.WithSpinnerDone(cmd.Context(), cmd.ErrOrStderr(), "building c-core harness", "c-core harness has been built", func() error {
 		var buildErr error
 		binary, buildErr = r.Build(cmd.Context())
 		return buildErr
@@ -357,7 +356,7 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 		return err
 	}
 	var build runner.EspIDFBuild
-	if err := ui.WithSpinner(cmd.Context(), cmd.ErrOrStderr(), "building ESP-IDF firmware", func() error {
+	if err := ui.WithSpinnerDone(cmd.Context(), cmd.ErrOrStderr(), "building ESP-IDF firmware", "ESP-IDF firmware has been built", func() error {
 		var buildErr error
 		build, buildErr = r.Build(cmd.Context(), runner.EspIDFSettings{
 			Endpoint: espIDFEndpoint(cfg),
