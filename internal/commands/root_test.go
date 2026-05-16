@@ -382,10 +382,21 @@ func TestSandboxStartHelpShowsMigrationFlags(t *testing.T) {
 
 func TestSandboxRunRejectsActiveRunner(t *testing.T) {
 	rootDir := t.TempDir()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	proxyPort := listener.Addr().(*net.TCPAddr).Port
+	configBody := "ports:\n  proxy: " + strconv.Itoa(proxyPort) + "\n"
+	if err := os.WriteFile(filepath.Join(rootDir, ".honch-sandbox.yaml"), []byte(configBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	manager := session.NewManager(filepath.Join(rootDir, ".honch-sandbox", "session.json"))
 	if err := manager.Save(session.State{
 		Stack:  session.StackState{Running: true},
 		Runner: session.RunnerState{Adapter: "c-core", PID: os.Getpid(), Detached: true},
+		Proxy:  session.ProxyState{Mode: "online", Port: proxyPort},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -395,11 +406,11 @@ func TestSandboxRunRejectsActiveRunner(t *testing.T) {
 	root.SetOut(&out)
 	root.SetErr(&out)
 
-	err := root.Execute()
-	if err == nil {
+	execErr := root.Execute()
+	if execErr == nil {
 		t.Fatal("run accepted a second active runner")
 	}
-	combined := err.Error() + "\n" + out.String()
+	combined := execErr.Error() + "\n" + out.String()
 	for _, want := range []string{"sandbox runner is already active", "c-core", "honch sandbox stop"} {
 		if !strings.Contains(combined, want) {
 			t.Fatalf("run error missing %q:\n%s", want, combined)
@@ -568,19 +579,35 @@ func TestNetworkRequiresRunningSandbox(t *testing.T) {
 func TestRunCommandRejectsUnknownAdapterWithRegistryNames(t *testing.T) {
 	rootDir := t.TempDir()
 	writeAdapterRegistryForTest(t, rootDir)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	proxyPort := listener.Addr().(*net.TCPAddr).Port
+	if err := os.WriteFile(filepath.Join(rootDir, ".honch-sandbox.yaml"), []byte("ports:\n  proxy: "+strconv.Itoa(proxyPort)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := session.NewManager(filepath.Join(rootDir, ".honch-sandbox", "session.json"))
+	if err := manager.Save(session.State{
+		Stack: session.StackState{Running: true},
+		Proxy: session.ProxyState{Mode: "online", Port: proxyPort},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	root := NewRootCommand(Dependencies{RootDir: rootDir})
 	root.SetArgs([]string{"--plain", "sandbox", "run", "micropython"})
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
 
-	err := root.Execute()
-	if err == nil {
+	execErr := root.Execute()
+	if execErr == nil {
 		t.Fatal("run accepted unknown adapter")
 	}
 	for _, want := range []string{"unsupported adapter", "c-core", "esp-idf"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("run error missing %q:\n%s", want, err.Error())
+		if !strings.Contains(execErr.Error(), want) {
+			t.Fatalf("run error missing %q:\n%s", want, execErr.Error())
 		}
 	}
 }

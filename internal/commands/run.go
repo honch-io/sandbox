@@ -39,7 +39,9 @@ func newRunCommand(deps Dependencies) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if state, err := manager.Load(); err == nil && runnerActive(state.Runner) {
+			if state, err := requireLiveSandbox(cmd, cfg, manager); err != nil {
+				return err
+			} else if runnerActive(state.Runner) {
 				return fmt.Errorf(ui.FormatError("sandbox runner is already active", []ui.Row{
 					{Key: "runner", Value: state.Runner.Adapter},
 					{Key: "next", Value: "stop the active sandbox before starting another runner"},
@@ -86,8 +88,34 @@ func runnerActive(state session.RunnerState) bool {
 	return processAlive(state.PID)
 }
 
+func requireLiveSandbox(cmd *cobra.Command, cfg config.Config, manager session.Manager) (session.State, error) {
+	state, err := manager.Load()
+	if err != nil {
+		return session.State{}, errors.New(ui.FormatError("sandbox is not running", []ui.Row{
+			{Key: "start", Value: "honch sandbox start"},
+			{Key: "status", Value: "honch sandbox status"},
+			{Key: "network", Value: "honch sandbox network --online"},
+		}))
+	}
+	if !state.Stack.Running || state.Proxy.Mode != proxy.ModeOnline.String() {
+		return session.State{}, errors.New(ui.FormatError("sandbox is not running", []ui.Row{
+			{Key: "start", Value: "honch sandbox start"},
+			{Key: "status", Value: "honch sandbox status"},
+			{Key: "network", Value: "honch sandbox network --online"},
+		}))
+	}
+	if !portIsOpen(cmd.Context(), cfg.Ports.Proxy, 200*time.Millisecond) {
+		return session.State{}, errors.New(ui.FormatError("sandbox proxy is not reachable", []ui.Row{
+			{Key: "proxy", Value: fmt.Sprintf("127.0.0.1:%d", cfg.Ports.Proxy)},
+			{Key: "status", Value: "honch sandbox status"},
+			{Key: "network", Value: "honch sandbox network --online"},
+		}))
+	}
+	return state, nil
+}
+
 func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager session.Manager, adapterConfig adapter.Config, detach bool) error {
-	r := runner.CCoreRunner{RepoRoot: root, StateDir: filepath.Join(root, cfg.Sandbox.StateDir)}
+	r := runner.CCoreRunner{RepoRoot: root, StateDir: filepath.Join(root, cfg.Sandbox.StateDir), HarnessDir: adapterConfig.Harness}
 	controlPath, err := ensureControlFIFO(root, cfg, adapterConfig.Name)
 	if err != nil {
 		return err
@@ -135,7 +163,16 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 	if status := qemuToolStatus(root, cfg); !status.Ready() {
 		return qemuNotReadyError()
 	}
-	r := runner.EspIDFRunner{RepoRoot: root, StateDir: filepath.Join(root, cfg.Sandbox.StateDir), IDFPath: idfPath}
+	r := runner.EspIDFRunner{
+		RepoRoot:        root,
+		StateDir:        filepath.Join(root, cfg.Sandbox.StateDir),
+		HarnessDir:      adapterConfig.Harness,
+		IDFPath:         idfPath,
+		Target:          adapterConfig.Build.Target,
+		RunTool:         adapterConfig.Run.Tool,
+		EmulatorMachine: adapterConfig.Emulator.Machine,
+		EmulatorNetwork: adapterConfig.Emulator.Network,
+	}
 	controlPath, err := ensureControlFIFO(root, cfg, adapterConfig.Name)
 	if err != nil {
 		return err
@@ -268,7 +305,16 @@ func servePosixRunner(cmd *cobra.Command, root string, cfg config.Config, adapte
 
 func serveEspIDFRunner(cmd *cobra.Command, root string, cfg config.Config, adapterConfig adapter.Config, target string, controlPath string) error {
 	idfPath, _ := resolveIDFPath(root, cfg)
-	r := runner.EspIDFRunner{RepoRoot: root, StateDir: filepath.Join(root, cfg.Sandbox.StateDir), IDFPath: idfPath}
+	r := runner.EspIDFRunner{
+		RepoRoot:        root,
+		StateDir:        filepath.Join(root, cfg.Sandbox.StateDir),
+		HarnessDir:      adapterConfig.Harness,
+		IDFPath:         idfPath,
+		Target:          adapterConfig.Build.Target,
+		RunTool:         adapterConfig.Run.Tool,
+		EmulatorMachine: adapterConfig.Emulator.Machine,
+		EmulatorNetwork: adapterConfig.Emulator.Network,
+	}
 	build := runner.EspIDFBuild{
 		ProjectDir: filepath.Join(root, "tools", "sandbox", adapterConfig.Harness),
 		BuildDir:   target,
