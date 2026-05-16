@@ -69,7 +69,7 @@ func TestRootHelpUsesSandboxHelpFormat(t *testing.T) {
 		"    Stack",
 		"      start    ›   Start the local Honch stack",
 		"    Harness",
-		"      esp-idf  ›   Build and run ESP-IDF firmware in QEMU",
+		"      run      ›   Build and run an SDK harness",
 		"      battery  ›   Set harness battery level",
 		"    Setup",
 		"      doctor   ›   Check local prerequisites",
@@ -78,6 +78,42 @@ func TestRootHelpUsesSandboxHelpFormat(t *testing.T) {
 	} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help missing %q:\n%s", want, help)
+		}
+	}
+}
+
+func TestSandboxHelpDoesNotAdvertiseAdaptersAsCommands(t *testing.T) {
+	root := NewRootCommand(Dependencies{})
+	root.SetArgs([]string{"sandbox", "--help"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	help := ui.StripANSI(out.String())
+	for _, misleading := range []string{"      c-core", "      esp-idf"} {
+		if strings.Contains(help, misleading) {
+			t.Fatalf("help advertised adapter as command %q:\n%s", misleading, help)
+		}
+	}
+}
+
+func TestLeafHelpShowsUsageAndFlags(t *testing.T) {
+	root := NewRootCommand(Dependencies{})
+	root.SetArgs([]string{"sandbox", "network", "--help"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	help := ui.StripANSI(out.String())
+	for _, want := range []string{"Usage", "honch sandbox network --online|--offline|--server-error", "Flags", "--offline", "--online", "--server-error"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("leaf help missing %q:\n%s", want, help)
 		}
 	}
 }

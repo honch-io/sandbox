@@ -6,6 +6,7 @@ import (
 
 	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 func installHelp(root *cobra.Command) {
@@ -36,7 +37,7 @@ func installHelp(root *cobra.Command) {
 			))
 			return
 		}
-		_, _ = fmt.Fprint(cmd.OutOrStdout(), ui.FormatCommandHelp(helpTitle(cmd), cmd.Short, visibleCommands(cmd)))
+		_, _ = fmt.Fprint(cmd.OutOrStdout(), ui.FormatCommandHelp(helpTitle(cmd), cmd.Short, commandUsage(cmd), commandFlagRows(cmd), visibleCommands(cmd)))
 	})
 	for _, child := range root.Commands() {
 		installHelp(child)
@@ -59,8 +60,6 @@ func sandboxHelpSections() []ui.CommandSection {
 			Commands: []ui.CommandRow{
 				{Name: "run", Description: "Build and run an SDK harness"},
 				{Name: "adapters", Description: "Inspect adapter configs"},
-				{Name: "c-core", Description: "Build and run the POSIX C harness"},
-				{Name: "esp-idf", Description: "Build and run ESP-IDF firmware in QEMU"},
 				{Name: "battery", Description: "Set harness battery level"},
 				{Name: "track", Description: "Emit a custom event"},
 				{Name: "flush", Description: "Flush queued events"},
@@ -111,5 +110,30 @@ func visibleCommands(cmd *cobra.Command) []ui.CommandRow {
 		}
 		rows = append(rows, ui.CommandRow{Name: child.Name(), Description: child.Short})
 	}
+	return rows
+}
+
+func commandUsage(cmd *cobra.Command) string {
+	if len(visibleCommands(cmd)) > 0 {
+		return ""
+	}
+	return cmd.UseLine()
+}
+
+func commandFlagRows(cmd *cobra.Command) []ui.Row {
+	if len(visibleCommands(cmd)) > 0 {
+		return nil
+	}
+	rows := []ui.Row{}
+	cmd.NonInheritedFlags().VisitAll(func(flag *pflag.Flag) {
+		if flag.Hidden {
+			return
+		}
+		name := "--" + flag.Name
+		if flag.Shorthand != "" {
+			name = "-" + flag.Shorthand + ", " + name
+		}
+		rows = append(rows, ui.Row{Key: name, Value: flag.Usage})
+	})
 	return rows
 }

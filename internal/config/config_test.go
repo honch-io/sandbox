@@ -49,3 +49,28 @@ func TestLoadRejectsInvalidOverride(t *testing.T) {
 		t.Fatal("Load succeeded with invalid override")
 	}
 }
+
+func TestLoadReadsBundledDefaultConfigBeforeRootOverride(t *testing.T) {
+	root := t.TempDir()
+	defaultDir := filepath.Join(root, "tools", "sandbox", "config")
+	if err := os.MkdirAll(defaultDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(defaultDir, "default.yaml"), []byte("ports:\n  proxy: 18181\nsandbox:\n  token: default-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".honch-sandbox.yaml"), []byte("ports:\n  proxy: 19191\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.Ports.Proxy != 19191 {
+		t.Fatalf("override proxy = %d, want 19191", cfg.Ports.Proxy)
+	}
+	if cfg.Sandbox.Token != "default-token" {
+		t.Fatalf("default token = %q, want default-token", cfg.Sandbox.Token)
+	}
+}

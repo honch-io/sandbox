@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/spf13/viper"
@@ -55,10 +56,18 @@ func Load(root string) (Config, error) {
 	v := viper.New()
 	setDefaults(v)
 
+	v.SetConfigFile(filepath.Join(root, "tools", "sandbox", "config", "default.yaml"))
+	if err := v.MergeInConfig(); err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) && !os.IsNotExist(err) {
+			return Config{}, fmt.Errorf("read default config: %w", err)
+		}
+	}
+
 	v.SetConfigName(".honch-sandbox")
 	v.SetConfigType("yaml")
 	v.AddConfigPath(root)
-	if err := v.ReadInConfig(); err != nil {
+	if err := v.MergeInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !errors.As(err, &notFound) {
 			return Config{}, fmt.Errorf("read config: %w", err)

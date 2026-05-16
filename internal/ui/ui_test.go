@@ -84,7 +84,7 @@ func TestSetPlainDisablesANSI(t *testing.T) {
 
 func TestFormatCommandHelpShowsDescriptionsUnderCommands(t *testing.T) {
 	SetPlain(false)
-	out := FormatCommandHelp("honch sandbox", "Run the Honch SDK E2E sandbox", []CommandRow{
+	out := FormatCommandHelp("honch sandbox", "Run the Honch SDK E2E sandbox", "", nil, []CommandRow{
 		{Name: "battery", Description: "Set the live harness battery level"},
 	})
 
@@ -135,7 +135,7 @@ func TestFormatGroupedCommandHelpUsesSectionsAndArrows(t *testing.T) {
 
 func TestFormatCommandHelpDoesNotBoldDescriptions(t *testing.T) {
 	SetPlain(false)
-	out := FormatCommandHelp("honch sandbox", "Run the Honch SDK E2E sandbox", []CommandRow{
+	out := FormatCommandHelp("honch sandbox", "Run the Honch SDK E2E sandbox", "", nil, []CommandRow{
 		{Name: "battery", Description: "Set the live harness battery level"},
 	})
 

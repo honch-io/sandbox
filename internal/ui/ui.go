@@ -132,7 +132,7 @@ func FormatError(message string, rows []Row) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func FormatCommandHelp(title string, description string, commands []CommandRow) string {
+func FormatCommandHelp(title string, description string, usage string, flags []Row, commands []CommandRow) string {
 	var b strings.Builder
 	b.WriteString("\n")
 	b.WriteString("  ")
@@ -142,6 +142,31 @@ func FormatCommandHelp(title string, description string, commands []CommandRow) 
 		b.WriteString("    ")
 		b.WriteString(render(helpText, description))
 		b.WriteString("\n\n")
+	}
+	if usage != "" {
+		b.WriteString("    ")
+		b.WriteString(render(label, "Usage"))
+		b.WriteString("\n")
+		b.WriteString("      ")
+		b.WriteString(render(helpText, usage))
+		b.WriteString("\n\n")
+	}
+	if len(flags) > 0 {
+		b.WriteString("    ")
+		b.WriteString(render(label, "Flags"))
+		b.WriteString("\n")
+		width := 0
+		for _, flag := range flags {
+			if len(flag.Key) > width {
+				width = len(flag.Key)
+			}
+		}
+		for _, flag := range flags {
+			b.WriteString("      ")
+			b.WriteString(FormatRow(flag.Key, flag.Value, width))
+			b.WriteString("\n")
+		}
+		b.WriteString("\n")
 	}
 	if len(commands) > 0 {
 		b.WriteString("    ")
