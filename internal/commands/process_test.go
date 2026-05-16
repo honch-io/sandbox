@@ -102,6 +102,29 @@ func TestSaveForegroundRunnerStateKillsProcessWhenSessionSaveFails(t *testing.T)
 	}
 }
 
+func TestClearForegroundRunnerStateReturnsSaveFailure(t *testing.T) {
+	root := t.TempDir()
+	sessionPath := filepath.Join(root, "session.json")
+	manager := session.NewManager(sessionPath)
+	if err := manager.Save(session.State{Runner: session.RunnerState{Adapter: "c-core", PID: 123}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sessionPath, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(root, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(root, 0o700)
+		_ = os.Chmod(sessionPath, 0o600)
+	})
+
+	if err := clearForegroundRunnerState(manager); err == nil {
+		t.Fatal("clearForegroundRunnerState ignored session save failure")
+	}
+}
+
 func failingSessionManager(t *testing.T) session.Manager {
 	t.Helper()
 	root := t.TempDir()

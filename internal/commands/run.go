@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -123,9 +124,9 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 		return err
 	}
 	err = proc.Wait()
-	state, _ = manager.Load()
-	state.Runner = session.RunnerState{}
-	_ = manager.Save(state)
+	if clearErr := clearForegroundRunnerState(manager); clearErr != nil {
+		return errors.Join(err, clearErr)
+	}
 	return err
 }
 
@@ -169,9 +170,9 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 		return err
 	}
 	err = r.Run(cmd.Context(), build, controlPath, cmd.OutOrStdout(), cmd.ErrOrStderr())
-	state, _ = manager.Load()
-	state.Runner = session.RunnerState{}
-	_ = manager.Save(state)
+	if clearErr := clearForegroundRunnerState(manager); clearErr != nil {
+		return errors.Join(err, clearErr)
+	}
 	return err
 }
 
@@ -184,6 +185,18 @@ func saveForegroundRunnerState(manager session.Manager, state session.State, cmd
 		return err
 	}
 	return nil
+}
+
+func clearForegroundRunnerState(manager session.Manager) error {
+	state, err := manager.Load()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	state.Runner = session.RunnerState{}
+	return manager.Save(state)
 }
 
 func espIDFEndpoint(cfg config.Config) string {
