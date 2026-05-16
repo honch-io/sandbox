@@ -136,7 +136,11 @@ func (s Service) resolveCommandDir(repoPath string, workingDir string) string {
 }
 
 func (s Service) startBackground(ctx context.Context, dir string, cfg config.Config, command config.CommandConfig) error {
-	if s.backgroundAlreadyRunning(ctx, cfg, command.Repo) {
+	running, err := s.backgroundAlreadyRunning(ctx, cfg, command.Repo)
+	if err != nil {
+		return err
+	}
+	if running {
 		return nil
 	}
 	cmd := exec.CommandContext(ctx, command.Args[0], command.Args[1:]...)
@@ -172,7 +176,7 @@ func (s Service) startBackground(ctx context.Context, dir string, cfg config.Con
 	return s.writePID(cfg, command.Repo, cmd.Process.Pid)
 }
 
-func (s Service) backgroundAlreadyRunning(ctx context.Context, cfg config.Config, repo string) bool {
+func (s Service) backgroundAlreadyRunning(ctx context.Context, cfg config.Config, repo string) (bool, error) {
 	port := 0
 	switch repo {
 	case "capture":
@@ -180,15 +184,19 @@ func (s Service) backgroundAlreadyRunning(ctx context.Context, cfg config.Config
 	case "worker":
 		port = cfg.Ports.Worker
 	default:
-		return false
+		return false, nil
 	}
 	dialer := net.Dialer{Timeout: 200 * time.Millisecond}
 	conn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
-		return false
+		return false, nil
 	}
 	_ = conn.Close()
-	return true
+	pid, ok := readPIDFile(filepath.Join(s.Root, cfg.Sandbox.StateDir, "pids", repo+".pid"))
+	if ok && processAlive(pid) {
+		return true, nil
+	}
+	return false, fmt.Errorf("%s port 127.0.0.1:%d is already in use by a non-sandbox process", repo, port)
 }
 
 func (s Service) waitForBackgroundPorts(ctx context.Context, cfg config.Config, timeout time.Duration) error {
@@ -239,6 +247,25 @@ func (s Service) writePID(cfg config.Config, name string, pid int) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, name+".pid"), []byte(fmt.Sprintf("%d", pid)), 0o600)
+}
+
+func readPIDFile(path string) (int, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, false
+	}
+	var pid int
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &pid); err != nil || pid <= 0 {
+		return 0, false
+	}
+	return pid, true
+}
+
+func processAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	return syscall.Kill(pid, 0) == nil
 }
 
 func (s Service) stopBackgroundProcesses(cfg config.Config) error {

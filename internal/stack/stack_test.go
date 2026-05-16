@@ -2,8 +2,10 @@ package stack
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -108,5 +110,40 @@ func TestStartSkipsMigrationsWhenMigrationDeclined(t *testing.T) {
 	}
 	if _, err := os.Stat(output); err != nil {
 		t.Fatalf("start command did not run after migration decline: %v", err)
+	}
+}
+
+func TestStartRejectsUnownedServicePort(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "capture")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+	cfg := config.Config{
+		Repos:   config.ReposConfig{Capture: "capture"},
+		Ports:   config.PortsConfig{Capture: port},
+		Sandbox: config.SandboxConfig{StateDir: ".state"},
+		Stack: config.StackConfig{StartCommands: []config.CommandConfig{
+			{
+				Repo:       "capture",
+				Args:       []string{"sh", "-c", "sleep 1"},
+				Background: true,
+				Log:        "capture.log",
+			},
+		}},
+	}
+
+	err = New(root).Start(context.Background(), cfg)
+	if err == nil {
+		t.Fatal("Start accepted an occupied capture port without sandbox ownership")
+	}
+	if !strings.Contains(err.Error(), "already in use") {
+		t.Fatalf("error did not explain occupied port ownership: %v", err)
 	}
 }
