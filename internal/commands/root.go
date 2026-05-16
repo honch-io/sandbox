@@ -652,6 +652,11 @@ func parseProperties(raw string) (map[string]any, error) {
 			{Key: "example", Value: `--properties '{"zone":"porch"}'`},
 		}))
 	}
+	if props == nil {
+		return nil, errors.New(ui.FormatError("properties must be a valid JSON object", []ui.Row{
+			{Key: "example", Value: `--properties '{"zone":"porch"}'`},
+		}))
+	}
 	return props, nil
 }
 

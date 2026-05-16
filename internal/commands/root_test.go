@@ -1204,6 +1204,9 @@ func TestParsePropertiesRequiresJSONObject(t *testing.T) {
 	if _, err := parseProperties(`["not", "an", "object"]`); err == nil {
 		t.Fatal("parseProperties accepted a JSON array")
 	}
+	if _, err := parseProperties(`null`); err == nil {
+		t.Fatal("parseProperties accepted JSON null")
+	}
 }
 
 func TestConfirmRequiresExplicitYes(t *testing.T) {
