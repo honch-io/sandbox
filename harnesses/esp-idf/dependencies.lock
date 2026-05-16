@@ -1,0 +1,46 @@
+dependencies:
+  espressif/cbor:
+    component_hash: dad9ca860963e930366510a10b422b3125a4fb27b979712ed65efcbcd742de50
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 0.6.1~4
+  espressif/cjson:
+    component_hash: e788323270d90738662d66fffa910bfe1fba019bba087f01557e70c40485b469
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.7.19~2
+  espressif/dp83848:
+    component_hash: 03cf03af6191c4789fca3eeef1a02aff78d896fecf138f45f9c2ec54863adc7e
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=6.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    targets:
+    - esp32
+    - esp32p4
+    version: 1.0.0
+  idf:
+    source:
+      type: idf
+    version: 6.0.1
+direct_dependencies:
+- espressif/cbor
+- espressif/cjson
+- espressif/dp83848
+- idf
+manifest_hash: 976b45c2491040a2097be0b6e453875872f4e9db462ed0296346cd6c71af67e6
+target: esp32
+version: 3.0.0

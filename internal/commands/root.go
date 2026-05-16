@@ -68,6 +68,8 @@ func newSandboxCommand(deps Dependencies) *cobra.Command {
 		Short: "Run the Honch SDK E2E sandbox",
 	}
 	cmd.AddCommand(
+		newDoctorCommand(deps),
+		newSetupCommand(deps),
 		newStartCommand(deps),
 		newStopCommand(deps),
 		newStatusCommand(deps),
@@ -81,6 +83,7 @@ func newSandboxCommand(deps Dependencies) *cobra.Command {
 		newLogsCommand(deps),
 		newEventsCommand(deps),
 		newScenarioCommand(deps),
+		newQEMUCommand(deps),
 		newProxyServeCommand(deps),
 		newRunnerServeCommand(deps),
 	)
@@ -240,58 +243,113 @@ func newUpdateCommand(deps Dependencies) *cobra.Command {
 func newRunCommand(deps Dependencies) *cobra.Command {
 	var detach bool
 	cmd := &cobra.Command{
-		Use:   "run c-core [--detach]",
+		Use:   "run <c-core|esp-idf> [--detach]",
 		Short: "Build and run an SDK sandbox harness",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if args[0] != "c-core" {
-				return fmt.Errorf("unsupported adapter %q", args[0])
-			}
+			adapter := args[0]
 			root, cfg, manager, err := loadRuntime(deps)
 			if err != nil {
 				return err
 			}
-			r := runner.CCoreRunner{RepoRoot: root, StateDir: filepath.Join(root, cfg.Sandbox.StateDir)}
-			controlPath, err := ensureControlFIFO(root, cfg)
-			if err != nil {
-				return err
+			switch adapter {
+			case "c-core":
+				return runCCoreAdapter(cmd, root, cfg, manager, detach)
+			case "esp-idf":
+				return runEspIDFAdapter(cmd, root, cfg, manager, detach)
+			default:
+				return fmt.Errorf("unsupported adapter %q; expected c-core or esp-idf", adapter)
 			}
-			binary, err := r.Build(cmd.Context())
-			if err != nil {
-				return err
-			}
-			env := runnerEnv(cfg.Ports.Proxy, cfg.Sandbox.Token, controlPath)
-			if detach {
-				proc, err := startRunnerSupervisor(root, cfg, binary, controlPath, env)
-				if err != nil {
-					return err
-				}
-				state, _ := manager.Load()
-				state.Runner = session.RunnerState{Adapter: "c-core", PID: proc.Pid, Detached: true, ControlPath: controlPath}
-				state.Proxy.Mode = proxy.ModeOnline.String()
-				state.Proxy.Port = cfg.Ports.Proxy
-				return manager.Save(state)
-			}
-			proc, err := runner.Start(cmd.Context(), binary, env, os.Stdin, cmd.OutOrStdout(), cmd.ErrOrStderr())
-			if err != nil {
-				return err
-			}
-			state, _ := manager.Load()
-			state.Runner = session.RunnerState{Adapter: "c-core", PID: proc.Process.Pid, Detached: false, ControlPath: controlPath}
-			state.Proxy.Mode = proxy.ModeOnline.String()
-			state.Proxy.Port = cfg.Ports.Proxy
-			if err := manager.Save(state); err != nil {
-				return err
-			}
-			err = proc.Wait()
-			state, _ = manager.Load()
-			state.Runner = session.RunnerState{}
-			_ = manager.Save(state)
-			return err
 		},
 	}
 	cmd.Flags().BoolVar(&detach, "detach", false, "run harness in the background")
 	return cmd
+}
+
+func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager session.Manager, detach bool) error {
+	r := runner.CCoreRunner{RepoRoot: root, StateDir: filepath.Join(root, cfg.Sandbox.StateDir)}
+	controlPath, err := ensureControlFIFO(root, cfg, "c-core")
+	if err != nil {
+		return err
+	}
+	binary, err := r.Build(cmd.Context())
+	if err != nil {
+		return err
+	}
+	env := runnerEnv(cfg.Ports.Proxy, cfg.Sandbox.Token, controlPath)
+	if detach {
+		proc, err := startRunnerSupervisor(root, cfg, "c-core", binary, controlPath, env)
+		if err != nil {
+			return err
+		}
+		state, _ := manager.Load()
+		state.Runner = session.RunnerState{Adapter: "c-core", PID: proc.Pid, Detached: true, ControlPath: controlPath}
+		state.Proxy.Mode = proxy.ModeOnline.String()
+		state.Proxy.Port = cfg.Ports.Proxy
+		return manager.Save(state)
+	}
+	proc, err := runner.Start(cmd.Context(), binary, env, os.Stdin, cmd.OutOrStdout(), cmd.ErrOrStderr())
+	if err != nil {
+		return err
+	}
+	state, _ := manager.Load()
+	state.Runner = session.RunnerState{Adapter: "c-core", PID: proc.Process.Pid, Detached: false, ControlPath: controlPath}
+	state.Proxy.Mode = proxy.ModeOnline.String()
+	state.Proxy.Port = cfg.Ports.Proxy
+	if err := manager.Save(state); err != nil {
+		return err
+	}
+	err = proc.Wait()
+	state, _ = manager.Load()
+	state.Runner = session.RunnerState{}
+	_ = manager.Save(state)
+	return err
+}
+
+func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manager session.Manager, detach bool) error {
+	idfPath, _ := resolveIDFPath(root, cfg)
+	if status := qemuToolStatus(root, cfg); !status.Ready() {
+		return qemuNotReadyError()
+	}
+	r := runner.EspIDFRunner{RepoRoot: root, StateDir: filepath.Join(root, cfg.Sandbox.StateDir), IDFPath: idfPath}
+	controlPath, err := ensureControlFIFO(root, cfg, "esp-idf")
+	if err != nil {
+		return err
+	}
+	build, err := r.Build(cmd.Context(), runner.EspIDFSettings{
+		Endpoint: espIDFEndpoint(cfg),
+		Token:    cfg.Sandbox.Token,
+	})
+	if err != nil {
+		return err
+	}
+	if detach {
+		proc, err := startRunnerSupervisor(root, cfg, "esp-idf", build.BuildDir, controlPath, nil)
+		if err != nil {
+			return err
+		}
+		state, _ := manager.Load()
+		state.Runner = session.RunnerState{Adapter: "esp-idf", PID: proc.Pid, Detached: true, ControlPath: controlPath}
+		state.Proxy.Mode = proxy.ModeOnline.String()
+		state.Proxy.Port = cfg.Ports.Proxy
+		return manager.Save(state)
+	}
+	state, _ := manager.Load()
+	state.Runner = session.RunnerState{Adapter: "esp-idf", PID: os.Getpid(), Detached: false, ControlPath: controlPath}
+	state.Proxy.Mode = proxy.ModeOnline.String()
+	state.Proxy.Port = cfg.Ports.Proxy
+	if err := manager.Save(state); err != nil {
+		return err
+	}
+	err = r.Run(cmd.Context(), build, controlPath, cmd.OutOrStdout(), cmd.ErrOrStderr())
+	state, _ = manager.Load()
+	state.Runner = session.RunnerState{}
+	_ = manager.Save(state)
+	return err
+}
+
+func espIDFEndpoint(cfg config.Config) string {
+	return fmt.Sprintf("http://10.0.2.2:%d", cfg.Ports.Proxy)
 }
 
 func newRunnerServeCommand(deps Dependencies) *cobra.Command {
@@ -301,18 +359,28 @@ func newRunnerServeCommand(deps Dependencies) *cobra.Command {
 		Hidden: true,
 		Args:   cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if args[0] != "c-core" {
-				return fmt.Errorf("unsupported adapter %q", args[0])
-			}
-			_, cfg, _, err := loadRuntime(deps)
+			root, cfg, _, err := loadRuntime(deps)
 			if err != nil {
 				return err
 			}
-			proc, err := runner.Start(context.Background(), args[1], runnerEnv(cfg.Ports.Proxy, cfg.Sandbox.Token, args[2]), os.Stdin, cmd.OutOrStdout(), cmd.ErrOrStderr())
-			if err != nil {
-				return err
+			switch args[0] {
+			case "c-core":
+				proc, err := runner.Start(context.Background(), args[1], runnerEnv(cfg.Ports.Proxy, cfg.Sandbox.Token, args[2]), os.Stdin, cmd.OutOrStdout(), cmd.ErrOrStderr())
+				if err != nil {
+					return err
+				}
+				return proc.Wait()
+			case "esp-idf":
+				idfPath, _ := resolveIDFPath(root, cfg)
+				r := runner.EspIDFRunner{RepoRoot: root, StateDir: filepath.Join(root, cfg.Sandbox.StateDir), IDFPath: idfPath}
+				build := runner.EspIDFBuild{
+					ProjectDir: filepath.Join(root, "tools", "sandbox", "harnesses", "esp-idf"),
+					BuildDir:   args[1],
+				}
+				return r.Run(context.Background(), build, args[2], cmd.OutOrStdout(), cmd.ErrOrStderr())
+			default:
+				return fmt.Errorf("unsupported adapter %q; expected c-core or esp-idf", args[0])
 			}
-			return proc.Wait()
 		},
 	}
 }

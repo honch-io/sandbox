@@ -34,7 +34,8 @@ These instructions apply to `tools/sandbox/**`.
 ## Harness Rules
 
 - Harnesses are developer-only and belong under `tools/sandbox/harnesses`.
-- C/POSIX is the only V1 adapter. Do not add MicroPython or ESP-IDF commands
-  until their adapter contracts are explicitly designed.
+- C/POSIX is the fast host smoke-test adapter. ESP-IDF runs as firmware under
+  QEMU. Keep future adapters behind the same `sandbox run <adapter>` contract
+  and document their emulator assumptions before exposing commands.
 - Harness controls use newline-delimited JSON so future adapters can share the
   same command surface.

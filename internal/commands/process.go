@@ -16,8 +16,8 @@ import (
 	"github.com/honch/sdk/tools/sandbox/internal/proxy"
 )
 
-func ensureControlFIFO(root string, cfg config.Config) (string, error) {
-	path := filepath.Join(root, cfg.Sandbox.StateDir, "c-core.control")
+func ensureControlFIFO(root string, cfg config.Config, adapter string) (string, error) {
+	path := filepath.Join(root, cfg.Sandbox.StateDir, adapter+".control")
 	_ = os.Remove(path)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", err
@@ -98,7 +98,7 @@ func portIsOpen(ctx context.Context, port int, timeout time.Duration) bool {
 	return true
 }
 
-func startRunnerSupervisor(root string, cfg config.Config, binary string, controlPath string, env map[string]string) (*os.Process, error) {
+func startRunnerSupervisor(root string, cfg config.Config, adapter string, target string, controlPath string, env map[string]string) (*os.Process, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, err
@@ -111,7 +111,7 @@ func startRunnerSupervisor(root string, cfg config.Config, binary string, contro
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(exe, "sandbox", "runner-serve", "c-core", binary, controlPath)
+	cmd := exec.Command(exe, "sandbox", "runner-serve", adapter, target, controlPath)
 	cmd.Dir = root
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
@@ -174,6 +174,9 @@ func killSandboxRunnerProcesses(root string, cfg config.Config) error {
 	patterns := []string{
 		buildBinary,
 		filepath.Join(root, "tools", "sandbox", "honch") + " sandbox runner-serve c-core",
+		filepath.Join(root, "tools", "sandbox", "honch") + " sandbox runner-serve esp-idf",
+		"idf.py -B " + filepath.Join(root, cfg.Sandbox.StateDir, "build", "esp-idf") + " qemu",
+		"qemu-system-xtensa .*" + filepath.Join(root, cfg.Sandbox.StateDir, "build", "esp-idf", "qemu_flash.bin"),
 	}
 	for _, pattern := range patterns {
 		out, err := exec.Command("pgrep", "-f", pattern).Output()

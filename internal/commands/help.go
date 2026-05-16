@@ -17,7 +17,7 @@ func installHelp(root *cobra.Command) {
 			_, _ = fmt.Fprint(cmd.OutOrStdout(), ui.FormatGroupedCommandHelp(
 				helpTitle(cmd),
 				cmd.Short,
-				"start -> run c-core --detach -> track -> flush -> events list -> stop",
+				"start -> run esp-idf --detach -> track -> flush -> events list -> stop",
 				sandboxHelpSections(),
 			))
 			return
@@ -58,6 +58,8 @@ func sandboxHelpSections() []ui.CommandSection {
 			Name: "Harness",
 			Commands: []ui.CommandRow{
 				{Name: "run", Description: "Build and run an SDK harness"},
+				{Name: "c-core", Description: "Build and run the POSIX C harness"},
+				{Name: "esp-idf", Description: "Build and run ESP-IDF firmware in QEMU"},
 				{Name: "battery", Description: "Set harness battery level"},
 				{Name: "track", Description: "Emit a custom event"},
 				{Name: "flush", Description: "Flush queued events"},
@@ -68,6 +70,14 @@ func sandboxHelpSections() []ui.CommandSection {
 			Name: "Network",
 			Commands: []ui.CommandRow{
 				{Name: "network", Description: "Set proxy mode"},
+			},
+		},
+		{
+			Name: "Setup",
+			Commands: []ui.CommandRow{
+				{Name: "doctor", Description: "Check local prerequisites"},
+				{Name: "setup", Description: "Install supported prerequisites"},
+				{Name: "qemu", Description: "Manage ESP-IDF QEMU tooling"},
 			},
 		},
 		{

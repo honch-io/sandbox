@@ -7,7 +7,8 @@ The sandbox is intentionally end to end: a live SDK harness sends real HTTP/CBOR
 to a local proxy, the proxy forwards to capture, worker processes the event, and
 ClickHouse is queried for the final ingested rows.
 
-V1 ships the `c-core` C/POSIX adapter only.
+V1 ships the `c-core` C/POSIX adapter. V2 adds an `esp-idf` adapter that builds
+real ESP-IDF firmware and runs it with Espressif's QEMU ESP32 emulator.
 
 ## Build
 
@@ -23,6 +24,30 @@ Run commands from `tools/sandbox`:
 ./honch --help
 ./honch sandbox --help
 ```
+
+For ESP-IDF/QEMU runs, let the CLI check or install the tools:
+
+```sh
+./honch sandbox doctor
+./honch sandbox setup --dry-run
+./honch sandbox qemu doctor
+./honch sandbox qemu install
+```
+
+`qemu install` asks before downloading anything. By default it creates a
+managed ESP-IDF checkout at `.honch-sandbox/toolchains/esp-idf`, installs ESP-IDF
+for ESP32, and installs Espressif's `qemu-xtensa` and `qemu-riscv32` tools. If
+you already have ESP-IDF, export `IDF_PATH` or pass `--idf-path`.
+
+Fresh machines still need the baseline system tools that the installer cannot
+reasonably bootstrap itself: `git`, Python, and Homebrew on macOS. On macOS,
+`qemu install` uses Homebrew to install Espressif's documented QEMU runtime
+libraries before installing the ESP-IDF QEMU tools.
+
+Use `sandbox doctor` when setting up a new machine. It checks host tools,
+sibling repos, and emulator readiness, then prints the next missing setup steps.
+Use `sandbox setup` to print or run supported installer actions. It always shows
+the commands first, and asks before running unless `--yes` is passed.
 
 Use `--plain` or `NO_COLOR=1` when you want unstyled output for scripts or
 logs:
@@ -86,6 +111,12 @@ Run the C/POSIX harness in the background:
 ./honch sandbox run c-core --detach
 ```
 
+Or run the ESP-IDF firmware in QEMU:
+
+```sh
+./honch sandbox run esp-idf --detach
+```
+
 Send a few live controls:
 
 ```sh
@@ -129,6 +160,38 @@ go build -o honch ./cmd/honch
 
 The tracked event should appear in `events list`. A low battery level also emits
 the SDK battery event, so seeing both rows is expected.
+
+## ESP-IDF QEMU Smoke Test
+
+Use this when changing the ESP-IDF SDK or shared embedded behavior. This path
+builds the sandbox firmware from `tools/sandbox/harnesses/esp-idf`, links the
+real local `esp-idf/honch` component, boots it through Espressif QEMU, and
+drives the firmware over UART using the same JSON control commands.
+
+```sh
+cd tools/sandbox
+
+go build -o honch ./cmd/honch
+
+./honch sandbox qemu doctor
+# If doctor reports missing tools:
+./honch sandbox qemu install
+
+./honch sandbox start
+./honch sandbox run esp-idf --detach
+
+./honch sandbox battery --level 8
+./honch sandbox track sdk.esp_idf_smoke --properties '{"source":"qemu"}'
+./honch sandbox flush
+
+./honch sandbox events list
+./honch sandbox logs device
+./honch sandbox stop
+```
+
+The ESP-IDF runner starts QEMU with `-nic user,model=open_eth`. The firmware
+uses OpenETH networking and points the SDK at `http://10.0.2.2:<proxy port>`,
+which is the host address visible from QEMU user networking.
 
 ## Network And Retry Testing
 
@@ -237,6 +300,23 @@ Builds and runs the C/POSIX harness. Use `--detach` for a background runner that
 can be controlled by other sandbox commands.
 
 ```sh
+./honch sandbox run esp-idf [--detach]
+```
+
+Builds the ESP-IDF sandbox firmware with `idf.py`, injecting the sandbox API key
+and QEMU-visible proxy endpoint at build time, then runs the firmware with
+`qemu-system-xtensa` using a TCP serial control channel.
+
+```sh
+./honch sandbox qemu doctor
+./honch sandbox qemu install [--idf-path <path>] [--ref v6.0.1] [--yes]
+```
+
+Checks or installs the ESP-IDF/QEMU toolchain needed by `run esp-idf`. The
+managed install path is used automatically by later sandbox runs, so contributors
+do not need to keep `IDF_PATH` exported after installing through the CLI.
+
+```sh
 ./honch sandbox battery --level <0-100>
 ```
 
@@ -339,18 +419,19 @@ customer SDK release archives for `c-core`, `esp-idf`, or `micropython`.
 Keep sandbox harnesses, fake devices, orchestration code, and sandbox configs in
 `tools/sandbox`, not inside customer SDK package paths.
 
-## V1 Scope
+## Scope
 
-Included in V1:
+Included:
 
 - Go CLI using the local Honch stack.
 - C/POSIX `c-core` harness.
+- ESP-IDF `esp-idf` firmware harness running under QEMU.
 - Real SDK HTTP/CBOR flow through capture, worker, and ClickHouse.
 - Proxy-controlled online/offline/server-error behavior.
 - Manual scenario execution.
 
-Not included in V1:
+Not included:
 
-- MicroPython or ESP-IDF adapters.
+- MicroPython adapters.
 - Heavy full-stack CI.
 - Customer-facing release artifacts.

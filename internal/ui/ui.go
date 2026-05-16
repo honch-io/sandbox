@@ -241,9 +241,9 @@ func render(style lipgloss.Style, text string) string {
 func valueStyle(rowValue any) lipgloss.Style {
 	text := strings.ToLower(fmt.Sprint(rowValue))
 	switch {
-	case text == "up", text == "clean", text == "online", strings.HasPrefix(text, "sandbox-"):
+	case text == "up", text == "ok", text == "clean", text == "online", text == "ready", strings.HasPrefix(text, "sandbox-"):
 		return success
-	case text == "dirty", text == "offline", text == "server-error", strings.HasPrefix(text, "down:"), strings.Contains(text, "failed"):
+	case text == "dirty", text == "missing", text == "offline", text == "server-error", strings.HasPrefix(text, "down:"), strings.Contains(text, "failed"):
 		return failure
 	case text == "inactive", text == "none":
 		return neutral
