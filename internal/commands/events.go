@@ -16,7 +16,10 @@ type eventTailClient interface {
 	Tail(context.Context, config.Config, time.Time) (string, error)
 }
 
-const eventTailLookback = 30 * time.Second
+const (
+	eventTailLookback  = 30 * time.Second
+	eventTailSeenLimit = 1000
+)
 
 func newEventsCommand(deps Dependencies) *cobra.Command {
 	cmd := &cobra.Command{Use: "events", Short: "Query ClickHouse sandbox events", Args: rejectUnknownArgs, RunE: commandGroupRunE}
@@ -55,7 +58,7 @@ func tailEvents(ctx context.Context, out io.Writer, cfg config.Config, client ev
 		interval = 2 * time.Second
 	}
 	nextSince := since
-	seen := map[string]struct{}{}
+	seen := newTailSeen(eventTailSeenLimit)
 	for {
 		pollStarted := time.Now().UTC()
 		result, err := client.Tail(ctx, cfg, nextSince)
@@ -79,7 +82,7 @@ func tailEvents(ctx context.Context, out io.Writer, cfg config.Config, client ev
 	}
 }
 
-func writeUnseenTailRows(out io.Writer, rows string, seen map[string]struct{}) (int, error) {
+func writeUnseenTailRows(out io.Writer, rows string, seen *tailSeen) (int, error) {
 	written := 0
 	for rows != "" {
 		line := rows
@@ -93,10 +96,9 @@ func writeUnseenTailRows(out io.Writer, rows string, seen map[string]struct{}) (
 		if key == "" {
 			continue
 		}
-		if _, ok := seen[key]; ok {
+		if !seen.remember(key) {
 			continue
 		}
-		seen[key] = struct{}{}
 		n, err := fmt.Fprint(out, line)
 		written += n
 		if err != nil {
@@ -104,4 +106,30 @@ func writeUnseenTailRows(out io.Writer, rows string, seen map[string]struct{}) (
 		}
 	}
 	return written, nil
+}
+
+type tailSeen struct {
+	limit int
+	keys  map[string]struct{}
+	order []string
+}
+
+func newTailSeen(limit int) *tailSeen {
+	if limit <= 0 {
+		limit = eventTailSeenLimit
+	}
+	return &tailSeen{limit: limit, keys: map[string]struct{}{}, order: make([]string, 0, limit)}
+}
+
+func (s *tailSeen) remember(key string) bool {
+	if _, ok := s.keys[key]; ok {
+		return false
+	}
+	s.keys[key] = struct{}{}
+	s.order = append(s.order, key)
+	for len(s.order) > s.limit {
+		delete(s.keys, s.order[0])
+		s.order = s.order[1:]
+	}
+	return true
 }

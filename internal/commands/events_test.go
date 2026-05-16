@@ -103,3 +103,22 @@ func TestTailEventsSuppressesRowsAlreadySeenInLookback(t *testing.T) {
 		t.Fatalf("event-2 printed %d times, want 1:\n%s", got, out.String())
 	}
 }
+
+func TestTailSeenEvictsOldRows(t *testing.T) {
+	seen := newTailSeen(2)
+	if !seen.remember("event-1") {
+		t.Fatal("first event-1 was not accepted")
+	}
+	if !seen.remember("event-2") {
+		t.Fatal("event-2 was not accepted")
+	}
+	if !seen.remember("event-3") {
+		t.Fatal("event-3 was not accepted")
+	}
+	if len(seen.keys) != 2 {
+		t.Fatalf("seen keys = %d, want bounded size 2", len(seen.keys))
+	}
+	if !seen.remember("event-1") {
+		t.Fatal("old event-1 was not evicted")
+	}
+}
