@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/honch/sdk/tools/sandbox/internal/config"
 )
@@ -24,6 +25,23 @@ func TestListQueryFiltersByTeamID(t *testing.T) {
 	}
 	if strings.Contains(query, "project_id") {
 		t.Fatalf("query should not reference project_id:\n%s", query)
+	}
+}
+
+func TestTailQueryUsesLineOrientedFormat(t *testing.T) {
+	cfg := config.Config{
+		Sandbox: config.SandboxConfig{
+			ClickHouseDatabase: "platform",
+			ProjectID:          "00000000-0000-0000-0000-000000000002",
+		},
+	}
+
+	query := TailQuery(cfg, time.Unix(0, 0))
+	if !strings.Contains(query, "FORMAT JSONEachRow") {
+		t.Fatalf("tail query is not line-oriented:\n%s", query)
+	}
+	if strings.Contains(query, "FORMAT PrettyCompact") {
+		t.Fatalf("tail query uses table output that cannot be row de-duped:\n%s", query)
 	}
 }
 

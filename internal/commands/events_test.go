@@ -72,3 +72,34 @@ func TestTailEventsKeepsLookbackOverlapBetweenPolls(t *testing.T) {
 		t.Fatalf("second tail cursor used too little lookback: age %s, want at least %s", age, eventTailLookback/2)
 	}
 }
+
+type duplicateTailClient struct {
+	cancel context.CancelFunc
+	calls  int
+}
+
+func (c *duplicateTailClient) Tail(ctx context.Context, cfg config.Config, since time.Time) (string, error) {
+	c.calls++
+	if c.calls == 2 {
+		c.cancel()
+		return "event-1\nevent-2\n", nil
+	}
+	return "event-1\n", nil
+}
+
+func TestTailEventsSuppressesRowsAlreadySeenInLookback(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &duplicateTailClient{cancel: cancel}
+	var out bytes.Buffer
+
+	err := tailEvents(ctx, &out, config.Config{}, client, time.Unix(0, 0), time.Millisecond)
+	if err != nil {
+		t.Fatalf("tailEvents returned error: %v", err)
+	}
+	if got := strings.Count(out.String(), "event-1"); got != 1 {
+		t.Fatalf("event-1 printed %d times, want 1:\n%s", got, out.String())
+	}
+	if got := strings.Count(out.String(), "event-2"); got != 1 {
+		t.Fatalf("event-2 printed %d times, want 1:\n%s", got, out.String())
+	}
+}

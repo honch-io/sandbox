@@ -21,12 +21,15 @@ func (c Client) List(ctx context.Context, cfg config.Config, limit int) (string,
 }
 
 func (c Client) Tail(ctx context.Context, cfg config.Config, since time.Time) (string, error) {
-	query := fmt.Sprintf(`SELECT event, timestamp, distinct_id FROM %s.events WHERE team_id = '%s' AND timestamp > '%s' ORDER BY timestamp ASC FORMAT PrettyCompact`,
+	return c.query(ctx, cfg, TailQuery(cfg, since))
+}
+
+func TailQuery(cfg config.Config, since time.Time) string {
+	return fmt.Sprintf(`SELECT event, timestamp, distinct_id FROM %s.events WHERE team_id = '%s' AND timestamp > '%s' ORDER BY timestamp ASC FORMAT JSONEachRow`,
 		cfg.Sandbox.ClickHouseDatabase,
 		strings.ReplaceAll(cfg.Sandbox.ProjectID, "'", "''"),
 		since.UTC().Format("2006-01-02 15:04:05"),
 	)
-	return c.query(ctx, cfg, query)
 }
 
 func ListQuery(cfg config.Config, limit int) string {
