@@ -851,6 +851,24 @@ func TestQEMUInstallDryRunPrintsCommandsWithoutConfirmation(t *testing.T) {
 	}
 }
 
+func TestQEMUInstallDryRunQuotesShellArguments(t *testing.T) {
+	idfPath := filepath.Join(t.TempDir(), "managed idf")
+	var out bytes.Buffer
+
+	printQEMUInstallDryRun(&out, qemuInstallPlanSpec{
+		IDFPath: idfPath,
+		Ref:     "v-test",
+		Python:  "/usr/bin/python3",
+	})
+
+	if !strings.Contains(out.String(), qemuShellQuote(idfPath)) {
+		t.Fatalf("dry-run output did not quote IDF path:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), " "+idfPath+"\n") {
+		t.Fatalf("dry-run output included unquoted IDF path:\n%s", out.String())
+	}
+}
+
 func TestQEMUDoctorRecognizesManagedToolchainWithoutIDFPath(t *testing.T) {
 	rootDir := t.TempDir()
 	idfPath := filepath.Join(rootDir, ".honch-sandbox", "toolchains", "esp-idf")

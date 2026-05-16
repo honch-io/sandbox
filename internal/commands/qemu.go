@@ -295,20 +295,36 @@ func runQEMUInstallPlan(ctx context.Context, stdout io.Writer, stderr io.Writer,
 func printQEMUInstallDryRun(out io.Writer, plan qemuInstallPlanSpec) {
 	_, _ = fmt.Fprintln(out, "dry run")
 	if !fileExists(plan.IDFPath) {
-		_, _ = fmt.Fprintf(out, "$ git clone --recursive --depth 1 --branch %s https://github.com/espressif/esp-idf.git %s\n", plan.Ref, plan.IDFPath)
+		_, _ = fmt.Fprintf(out, "$ %s\n", shellCommandString("git", "clone", "--recursive", "--depth", "1", "--branch", plan.Ref, "https://github.com/espressif/esp-idf.git", plan.IDFPath))
 	}
 	if runtime.GOOS == "darwin" {
-		_, _ = fmt.Fprintln(out, "$ brew install libgcrypt glib pixman sdl2 libslirp")
+		_, _ = fmt.Fprintf(out, "$ %s\n", shellCommandString("brew", "install", "libgcrypt", "glib", "pixman", "sdl2", "libslirp"))
 	}
-	_, _ = fmt.Fprintln(out, "$ ./install.sh esp32")
-	_, _ = fmt.Fprintf(out, "$ %s tools/idf_tools.py install qemu-xtensa qemu-riscv32\n", valueOr(plan.Python, "python3"))
+	_, _ = fmt.Fprintf(out, "$ %s\n", shellCommandString("./install.sh", "esp32"))
+	_, _ = fmt.Fprintf(out, "$ %s\n", shellCommandString(valueOr(plan.Python, "python3"), "tools/idf_tools.py", "install", "qemu-xtensa", "qemu-riscv32"))
 }
 
 func runInstallCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, dir string, name string, args ...string) error {
-	_, _ = fmt.Fprintf(stdout, "$ %s %s\n", name, strings.Join(args, " "))
+	_, _ = fmt.Fprintf(stdout, "$ %s\n", shellCommandString(name, args...))
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	return cmd.Run()
+}
+
+func shellCommandString(name string, args ...string) string {
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, shellDisplayArg(name))
+	for _, arg := range args {
+		parts = append(parts, shellDisplayArg(arg))
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellDisplayArg(value string) string {
+	if value == "" || strings.ContainsAny(value, " \t\n'\"$`\\!*?[]{}()&;<>|") {
+		return qemuShellQuote(value)
+	}
+	return value
 }
