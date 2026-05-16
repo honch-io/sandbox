@@ -69,17 +69,16 @@ func startProxyProcess(root string, cfg config.Config) (*os.Process, error) {
 		_ = logFile.Close()
 		return nil, err
 	}
-	pid := cmd.Process.Pid
-	if err := cmd.Process.Release(); err != nil {
+	proc, err := releaseDetachedProcess(cmd, func(pid int) error {
+		return waitForPortReady(context.Background(), cfg.Ports.Proxy, pid, 5*time.Second)
+	})
+	if err != nil {
 		_ = logFile.Close()
 		return nil, err
 	}
 	_ = logFile.Close()
-	_ = writePIDFile(proxyPIDPath(root, cfg), pid)
-	if err := waitForPortReady(context.Background(), cfg.Ports.Proxy, pid, 5*time.Second); err != nil {
-		return nil, err
-	}
-	return cmd.Process, nil
+	_ = writePIDFile(proxyPIDPath(root, cfg), proc.Pid)
+	return proc, nil
 }
 
 func proxyPIDPath(root string, cfg config.Config) string {
@@ -137,16 +136,31 @@ func startRunnerSupervisor(root string, cfg config.Config, adapter string, targe
 		_ = logFile.Close()
 		return nil, err
 	}
-	pid := cmd.Process.Pid
-	if err := cmd.Process.Release(); err != nil {
+	proc, err := releaseDetachedProcess(cmd, func(pid int) error {
+		return waitForRunnerReady(context.Background(), logPath, pid, runnerReadyTimeout())
+	})
+	if err != nil {
 		_ = logFile.Close()
 		return nil, err
 	}
 	_ = logFile.Close()
-	if err := waitForRunnerReady(context.Background(), logPath, pid, runnerReadyTimeout()); err != nil {
+	return proc, nil
+}
+
+func releaseDetachedProcess(cmd *exec.Cmd, waitReady func(pid int) error) (*os.Process, error) {
+	proc := cmd.Process
+	pid := proc.Pid
+	if err := waitReady(pid); err != nil {
+		_ = killProcess(pid)
+		_ = cmd.Wait()
 		return nil, err
 	}
-	return cmd.Process, nil
+	if err := proc.Release(); err != nil {
+		_ = killProcess(pid)
+		_ = cmd.Wait()
+		return nil, err
+	}
+	return proc, nil
 }
 
 func killProcess(pid int) error {
