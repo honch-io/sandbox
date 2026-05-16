@@ -75,6 +75,9 @@ func startProxyProcess(root string, cfg config.Config) (*os.Process, error) {
 	}
 	_ = logFile.Close()
 	_ = writePIDFile(proxyPIDPath(root, cfg), cmd.Process.Pid)
+	if err := waitForPortReady(context.Background(), cfg.Ports.Proxy, cmd.Process.Pid, 5*time.Second); err != nil {
+		return nil, err
+	}
 	return cmd.Process, nil
 }
 
@@ -138,6 +141,9 @@ func startRunnerSupervisor(root string, cfg config.Config, adapter string, targe
 		return nil, err
 	}
 	_ = logFile.Close()
+	if err := waitForRunnerReady(context.Background(), logPath, cmd.Process.Pid, runnerReadyTimeout()); err != nil {
+		return nil, err
+	}
 	return cmd.Process, nil
 }
 
@@ -206,4 +212,50 @@ func processAlive(pid int) bool {
 		return false
 	}
 	return syscall.Kill(pid, 0) == nil
+}
+
+func waitForPortReady(ctx context.Context, port int, pid int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !processAlive(pid) {
+			return fmt.Errorf("sandbox process %d exited before port %d became ready", pid, port)
+		}
+		if portIsOpen(ctx, port, 100*time.Millisecond) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("sandbox process %d did not open port %d within %s", pid, port, timeout)
+}
+
+func waitForRunnerReady(ctx context.Context, logPath string, pid int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !processAlive(pid) {
+			return fmt.Errorf("sandbox runner %d exited before reporting ready", pid)
+		}
+		data, err := os.ReadFile(logPath)
+		if err == nil && strings.Contains(string(data), `"ready":true`) {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("sandbox runner %d did not report ready within %s", pid, timeout)
+}
+
+func runnerReadyTimeout() time.Duration {
+	if value := os.Getenv("HONCH_SANDBOX_RUNNER_READY_TIMEOUT"); value != "" {
+		if parsed, err := time.ParseDuration(value); err == nil && parsed > 0 {
+			return parsed
+		}
+	}
+	return 30 * time.Second
 }

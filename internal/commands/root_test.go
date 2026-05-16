@@ -734,6 +734,21 @@ func TestStartProxyProcessRejectsUnownedPortListener(t *testing.T) {
 	}
 }
 
+func TestWaitForRunnerReadyTimesOutWithoutReadyMarker(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "device.log")
+	if err := os.WriteFile(logPath, []byte("booting\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := waitForRunnerReady(context.Background(), logPath, os.Getpid(), 20*time.Millisecond)
+	if err == nil {
+		t.Fatal("waitForRunnerReady succeeded without ready marker")
+	}
+	if !strings.Contains(err.Error(), "did not report ready") {
+		t.Fatalf("error did not explain missing ready marker: %v", err)
+	}
+}
+
 func configForTest() config.Config {
 	return config.Config{
 		Sandbox: config.SandboxConfig{StateDir: ".honch-sandbox"},
