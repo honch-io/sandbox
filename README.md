@@ -7,8 +7,8 @@ The sandbox is intentionally end to end: a live SDK harness sends real HTTP/CBOR
 to a local proxy, the proxy forwards to capture, worker processes the event, and
 ClickHouse is queried for the final ingested rows.
 
-V1 ships the `c-core` C/POSIX adapter. V2 adds an `esp-idf` adapter that builds
-real ESP-IDF firmware and runs it with Espressif's QEMU ESP32 emulator.
+The sandbox ships a `c-core` C/POSIX adapter and an `esp-idf` adapter that
+builds real ESP-IDF firmware and runs it with Espressif's QEMU ESP32 emulator.
 
 ## Build
 
@@ -174,6 +174,60 @@ go build -o honch ./cmd/honch
 
 The tracked event should appear in `events list`. A low battery level also emits
 the SDK battery event, so seeing both rows is expected.
+
+## Editing Harness Product Code
+
+Each adapter harness is split into customer-like app code and sandbox plumbing.
+Edit the app code when you want to test how a customer would use the SDK. Avoid
+editing the plumbing unless you are changing how the CLI talks to the harness.
+
+```text
+tools/sandbox/harnesses/c-core/
+  app.c              # customer-like C/POSIX SDK integration under test
+  app.h
+  main.c             # small entrypoint that wires env/config and control
+  sandbox_control.c  # CLI JSON/FIFO control plumbing
+  sandbox_control.h
+
+tools/sandbox/harnesses/esp-idf/main/
+  app.c              # customer-like ESP-IDF SDK integration under test
+  app.h
+  app_main.c         # firmware entrypoint
+  sandbox_control.c  # UART JSON control plumbing used by QEMU
+  sandbox_control.h
+  sandbox_network.c  # QEMU OpenETH setup
+  sandbox_network.h
+```
+
+Typical SDK contributor loop:
+
+```sh
+cd tools/sandbox
+
+# Build the CLI only when Go CLI code changed.
+go build -o honch ./cmd/honch
+
+# Edit customer-like harness behavior.
+$EDITOR harnesses/c-core/app.c
+# or:
+$EDITOR harnesses/esp-idf/main/app.c
+
+# Rerun the adapter. The CLI rebuilds the harness or firmware for you.
+./honch sandbox run c-core --detach
+# or:
+./honch sandbox run esp-idf --detach
+
+# Drive the simulated device behavior.
+./honch sandbox battery --level 8
+./honch sandbox track camera.motion --properties '{"zone":"porch"}'
+./honch sandbox flush
+./honch sandbox events list
+```
+
+For example, if you add SDK behavior around battery changes, put the
+customer-like reaction in `app.c`, then use `honch sandbox battery --level 8` to
+drive the callback path. The command goes through the sandbox control file, but
+the SDK behavior being tested stays in the app file.
 
 ## ESP-IDF QEMU Smoke Test
 
