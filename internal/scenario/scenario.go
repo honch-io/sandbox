@@ -70,6 +70,9 @@ func (w *WaitStep) UnmarshalYAML(value *yaml.Node) error {
 	if err != nil {
 		return err
 	}
+	if parsed < 0 {
+		return fmt.Errorf("wait duration must be non-negative")
+	}
 	w.Duration = parsed
 	return nil
 }

@@ -3,6 +3,7 @@ package scenario
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -52,5 +53,25 @@ func TestLoadRejectsStepWithoutAction(t *testing.T) {
 	}
 	if _, err := Load(path); err == nil {
 		t.Fatal("Load accepted an empty step")
+	}
+}
+
+func TestLoadRejectsNegativeWaitDuration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "negative-wait.yaml")
+	if err := os.WriteFile(path, []byte(`
+name: negative wait
+steps:
+  - wait:
+      duration: -1s
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load accepted a negative wait duration")
+	}
+	if !strings.Contains(err.Error(), "wait duration must be non-negative") {
+		t.Fatalf("error did not explain negative wait: %v", err)
 	}
 }
