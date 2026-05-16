@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -192,6 +193,62 @@ func TestEspIDFRunnerRunStartsQEMUAndConnectsSerial(t *testing.T) {
 		if !strings.Contains(log, want) {
 			t.Fatalf("runner log missing %q:\n%s", want, log)
 		}
+	}
+}
+
+func TestEspIDFRunnerRunFailsWhenFirmwareNeverReportsReady(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake qemu script is POSIX-only")
+	}
+	repoRoot := t.TempDir()
+	projectDir := filepath.Join(repoRoot, "tools", "sandbox", "harnesses", "esp-idf")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(repoRoot, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	python := filepath.Join(binDir, "python")
+	if err := os.WriteFile(python, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	qemu := filepath.Join(binDir, "qemu-system-xtensa")
+	if err := os.WriteFile(qemu, []byte("#!/bin/sh\nsleep 2\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("HONCH_SANDBOX_QEMU_READY_TIMEOUT", "200ms")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	t.Setenv("HONCH_SANDBOX_QEMU_SERIAL_ADDR", listener.Addr().String())
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = conn.Write([]byte("booting\n"))
+		time.Sleep(time.Second)
+	}()
+
+	r := EspIDFRunner{RepoRoot: repoRoot, StateDir: filepath.Join(repoRoot, ".honch-sandbox")}
+	build := EspIDFBuild{
+		ProjectDir: projectDir,
+		BuildDir:   filepath.Join(repoRoot, ".honch-sandbox", "build", "esp-idf"),
+	}
+	if err := os.MkdirAll(build.BuildDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err = r.Run(context.Background(), build, "", io.Discard, io.Discard)
+	if err == nil {
+		t.Fatal("Run succeeded without firmware ready marker")
+	}
+	if !strings.Contains(err.Error(), "firmware did not report ready") {
+		t.Fatalf("error did not explain missing ready marker: %v", err)
 	}
 }
 

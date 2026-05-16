@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -114,15 +115,33 @@ func (r EspIDFRunner) RunQEMU(ctx context.Context, build EspIDFBuild, controlPat
 	if controlPath != "" {
 		go bridgeControlToWriter(ctx, controlPath, conn)
 	}
+	readyDone := make(chan struct{}, 1)
 	copyDone := make(chan error, 1)
 	go func() {
-		_, err := io.Copy(stdout, conn)
-		copyDone <- err
+		copyDone <- copyQEMUSerial(stdout, conn, readyDone)
 	}()
 	waitDone := make(chan error, 1)
 	go func() {
 		waitDone <- qemu.Wait()
 	}()
+	readyTimeout := qemuReadyTimeout()
+	select {
+	case <-ctx.Done():
+		_ = qemu.Process.Kill()
+		return ctx.Err()
+	case err := <-waitDone:
+		return fmt.Errorf("QEMU exited before firmware ready: %w", err)
+	case err := <-copyDone:
+		_ = qemu.Process.Kill()
+		if err != nil {
+			return fmt.Errorf("QEMU serial closed before firmware ready: %w", err)
+		}
+		return fmt.Errorf("QEMU serial closed before firmware ready")
+	case <-readyDone:
+	case <-time.After(readyTimeout):
+		_ = qemu.Process.Kill()
+		return fmt.Errorf("firmware did not report ready within %s", readyTimeout)
+	}
 	select {
 	case <-ctx.Done():
 		_ = qemu.Process.Kill()
@@ -133,6 +152,42 @@ func (r EspIDFRunner) RunQEMU(ctx context.Context, build EspIDFBuild, controlPat
 		_ = qemu.Process.Kill()
 		return err
 	}
+}
+
+func copyQEMUSerial(stdout io.Writer, src io.Reader, readyDone chan<- struct{}) error {
+	reader := bufio.NewReader(src)
+	readySent := false
+	for {
+		line, err := reader.ReadString('\n')
+		if line != "" {
+			if _, writeErr := io.WriteString(stdout, line); writeErr != nil {
+				return writeErr
+			}
+			if !readySent && qemuReadyLine(line) {
+				readySent = true
+				readyDone <- struct{}{}
+			}
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func qemuReadyLine(line string) bool {
+	return strings.Contains(line, `"ready":true`) || strings.TrimSpace(line) == "ready"
+}
+
+func qemuReadyTimeout() time.Duration {
+	if value := os.Getenv("HONCH_SANDBOX_QEMU_READY_TIMEOUT"); value != "" {
+		if timeout, err := time.ParseDuration(value); err == nil && timeout > 0 {
+			return timeout
+		}
+	}
+	return 30 * time.Second
 }
 
 func (r EspIDFRunner) runIDF(ctx context.Context, dir string, args ...string) error {
