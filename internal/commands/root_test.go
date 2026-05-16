@@ -1101,6 +1101,19 @@ func TestRunnerServeResolvesAdapterKindFromRegistry(t *testing.T) {
 	}
 }
 
+func TestSandboxRunnerProcessPatternsUseGenericSupervisorPattern(t *testing.T) {
+	patterns := sandboxRunnerProcessPatterns("/repo", config.Config{Sandbox: config.SandboxConfig{StateDir: ".state"}})
+	joined := strings.Join(patterns, "\n")
+	if !strings.Contains(joined, "sandbox runner-serve ") {
+		t.Fatalf("patterns did not include generic runner supervisor cleanup:\n%s", joined)
+	}
+	for _, adapterName := range []string{"runner-serve c-core", "runner-serve esp-idf"} {
+		if strings.Contains(joined, adapterName) {
+			t.Fatalf("patterns hardcoded adapter supervisor %q:\n%s", adapterName, joined)
+		}
+	}
+}
+
 func TestRootHelpHidesGeneratedHelpAndCompletion(t *testing.T) {
 	root := NewRootCommand(Dependencies{})
 	root.SetArgs([]string{"--help"})

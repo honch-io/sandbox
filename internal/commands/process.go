@@ -180,15 +180,7 @@ func killProcess(pid int) error {
 }
 
 func killSandboxRunnerProcesses(root string, cfg config.Config) error {
-	buildBinary := filepath.Join(root, cfg.Sandbox.StateDir, "build", "c-core", "honch_sandbox_c_core")
-	patterns := []string{
-		buildBinary,
-		filepath.Join(root, "tools", "sandbox", "honch") + " sandbox runner-serve c-core",
-		filepath.Join(root, "tools", "sandbox", "honch") + " sandbox runner-serve esp-idf",
-		"idf.py -B " + filepath.Join(root, cfg.Sandbox.StateDir, "build", "esp-idf") + " qemu",
-		"qemu-system-xtensa .*" + filepath.Join(root, cfg.Sandbox.StateDir, "build", "esp-idf", "qemu_flash.bin"),
-	}
-	for _, pattern := range patterns {
+	for _, pattern := range sandboxRunnerProcessPatterns(root, cfg) {
 		out, err := exec.Command("pgrep", "-f", pattern).Output()
 		if err != nil {
 			continue
@@ -202,6 +194,16 @@ func killSandboxRunnerProcesses(root string, cfg config.Config) error {
 		}
 	}
 	return nil
+}
+
+func sandboxRunnerProcessPatterns(root string, cfg config.Config) []string {
+	buildBinary := filepath.Join(root, cfg.Sandbox.StateDir, "build", "c-core", "honch_sandbox_c_core")
+	return []string{
+		buildBinary,
+		filepath.Join(root, "tools", "sandbox", "honch") + " sandbox runner-serve ",
+		"idf.py -B " + filepath.Join(root, cfg.Sandbox.StateDir, "build", "esp-idf") + " qemu",
+		"qemu-system-xtensa .*" + filepath.Join(root, cfg.Sandbox.StateDir, "build", "esp-idf", "qemu_flash.bin"),
+	}
 }
 
 func readPID(path string) (int, bool) {
