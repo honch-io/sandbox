@@ -35,61 +35,84 @@ static int parse_level(const char *line)
     return atoi(level);
 }
 
-static void parse_string_field(const char *line, const char *field, char *out, size_t out_size)
+static const char *json_field_value(const char *line, const char *field)
 {
     char pattern[64];
     snprintf(pattern, sizeof(pattern), "\"%s\"", field);
     const char *cursor = strstr(line, pattern);
     if (!cursor) {
-        out[0] = '\0';
-        return;
+        return NULL;
     }
     cursor = strchr(cursor + strlen(pattern), ':');
     if (!cursor) {
+        return NULL;
+    }
+    cursor++;
+    while (*cursor == ' ' || *cursor == '\t') {
+        cursor++;
+    }
+    return cursor;
+}
+
+static void parse_string_field(const char *line, const char *field, char *out, size_t out_size)
+{
+    const char *cursor = json_field_value(line, field);
+    if (!cursor) {
         out[0] = '\0';
         return;
     }
-    cursor = strchr(cursor, '"');
-    if (!cursor) {
+    if (*cursor != '"') {
         out[0] = '\0';
         return;
     }
     cursor++;
     size_t i = 0;
-    while (cursor[i] && cursor[i] != '"' && i + 1 < out_size) {
-        out[i] = cursor[i];
-        i++;
+    int escaped = 0;
+    while (*cursor && i + 1 < out_size) {
+        if (escaped) {
+            out[i++] = *cursor++;
+            escaped = 0;
+            continue;
+        }
+        if (*cursor == '\\') {
+            escaped = 1;
+            cursor++;
+            continue;
+        }
+        if (*cursor == '"') {
+            break;
+        }
+        out[i++] = *cursor++;
     }
     out[i] = '\0';
 }
 
 static void parse_object_field(const char *line, const char *field, char *out, size_t out_size)
 {
-    char pattern[64];
-    snprintf(pattern, sizeof(pattern), "\"%s\"", field);
-    const char *cursor = strstr(line, pattern);
+    const char *cursor = json_field_value(line, field);
     if (!cursor) {
         out[0] = '\0';
         return;
     }
-    cursor = strchr(cursor + strlen(pattern), ':');
-    if (!cursor) {
-        out[0] = '\0';
-        return;
-    }
-    while (*cursor && *cursor != '{') {
-        cursor++;
-    }
-    if (!*cursor) {
+    if (*cursor != '{') {
         out[0] = '\0';
         return;
     }
     int depth = 0;
+    int in_string = 0;
+    int escaped = 0;
     size_t i = 0;
     while (*cursor && i + 1 < out_size) {
-        if (*cursor == '{') {
+        char ch = *cursor;
+        if (escaped) {
+            escaped = 0;
+        } else if (ch == '\\' && in_string) {
+            escaped = 1;
+        } else if (ch == '"') {
+            in_string = !in_string;
+        } else if (!in_string && ch == '{') {
             depth++;
-        } else if (*cursor == '}') {
+        } else if (!in_string && ch == '}') {
             depth--;
         }
         out[i++] = *cursor++;
@@ -211,6 +234,8 @@ int main(void)
         fds[nfds++] = (struct pollfd){.fd = STDIN_FILENO, .events = POLLIN};
     }
     char line[2048];
+    char control_buffer[4096];
+    size_t control_buffer_len = 0;
 
     for (;;) {
         int ready = poll(fds, (nfds_t)nfds, 1000);
@@ -226,14 +251,38 @@ int main(void)
             if (!(fds[i].revents & POLLIN)) {
                 continue;
             }
-            FILE *stream = fdopen(dup(fds[i].fd), "r");
-            if (!stream) {
-                continue;
+            for (;;) {
+                ssize_t n = read(fds[i].fd, control_buffer + control_buffer_len, sizeof(control_buffer) - control_buffer_len - 1);
+                if (n < 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        break;
+                    }
+                    fprintf(stderr, "control read failed: %s\n", strerror(errno));
+                    break;
+                }
+                if (n == 0) {
+                    break;
+                }
+                control_buffer_len += (size_t)n;
+                control_buffer[control_buffer_len] = '\0';
+                char *start = control_buffer;
+                char *newline = NULL;
+                while ((newline = strchr(start, '\n')) != NULL) {
+                    *newline = '\0';
+                    snprintf(line, sizeof(line), "%s", start);
+                    handle_line(client, line);
+                    start = newline + 1;
+                }
+                size_t remaining = strlen(start);
+                memmove(control_buffer, start, remaining);
+                control_buffer_len = remaining;
+                control_buffer[control_buffer_len] = '\0';
+                if (control_buffer_len == sizeof(control_buffer) - 1) {
+                    fprintf(stderr, "control line too long, dropping buffered input\n");
+                    control_buffer_len = 0;
+                    control_buffer[0] = '\0';
+                }
             }
-            if (fgets(line, sizeof(line), stream)) {
-                handle_line(client, line);
-            }
-            fclose(stream);
         }
     }
 
