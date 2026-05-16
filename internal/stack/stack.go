@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -52,7 +51,6 @@ func (s Service) Stop(ctx context.Context, cfg config.Config) error {
 	if err := s.stopBackgroundProcesses(cfg); err != nil {
 		return err
 	}
-	_ = s.stopPortListeners(cfg)
 	return s.runCommands(ctx, cfg, cfg.Stack.StopCommands)
 }
 
@@ -269,33 +267,6 @@ func (s Service) stopBackgroundProcesses(cfg config.Config) error {
 		}
 		if removeErr := os.Remove(path); removeErr != nil {
 			return removeErr
-		}
-	}
-	return nil
-}
-
-func (s Service) stopPortListeners(cfg config.Config) error {
-	// PID files are best-effort because local CLI runs can be interrupted. Fall
-	// back to known sandbox ports so stop can recover stale capture/worker
-	// processes instead of asking contributors to hunt them manually.
-	for _, port := range []int{cfg.Ports.Capture, cfg.Ports.Worker} {
-		if port <= 0 {
-			continue
-		}
-		out, err := exec.Command("lsof", "-tiTCP:"+strconv.Itoa(port), "-sTCP:LISTEN").Output()
-		if err != nil {
-			continue
-		}
-		for _, field := range strings.Fields(string(out)) {
-			pid, scanErr := strconv.Atoi(field)
-			if scanErr != nil || pid <= 0 {
-				continue
-			}
-			if killErr := syscall.Kill(-pid, syscall.SIGINT); killErr != nil {
-				if process, findErr := os.FindProcess(pid); findErr == nil {
-					_ = process.Signal(os.Interrupt)
-				}
-			}
 		}
 	}
 	return nil

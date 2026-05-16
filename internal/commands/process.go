@@ -42,8 +42,11 @@ func writeProxyMode(root string, cfg config.Config, mode proxy.Mode) error {
 
 func startProxyProcess(root string, cfg config.Config) (*os.Process, error) {
 	if portIsOpen(context.Background(), cfg.Ports.Proxy, 200*time.Millisecond) {
-		_ = appendProxyLog(root, cfg, fmt.Sprintf("proxy already running on 127.0.0.1:%d\n", cfg.Ports.Proxy))
-		return nil, nil
+		if pid, ok := readPID(proxyPIDPath(root, cfg)); ok && processAlive(pid) {
+			_ = appendProxyLog(root, cfg, fmt.Sprintf("proxy already running on 127.0.0.1:%d\n", cfg.Ports.Proxy))
+			return nil, nil
+		}
+		return nil, fmt.Errorf("proxy port 127.0.0.1:%d is already in use by a non-sandbox process", cfg.Ports.Proxy)
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -71,7 +74,12 @@ func startProxyProcess(root string, cfg config.Config) (*os.Process, error) {
 		return nil, err
 	}
 	_ = logFile.Close()
+	_ = writePIDFile(proxyPIDPath(root, cfg), cmd.Process.Pid)
 	return cmd.Process, nil
+}
+
+func proxyPIDPath(root string, cfg config.Config) string {
+	return filepath.Join(root, cfg.Sandbox.StateDir, "pids", "proxy.pid")
 }
 
 func appendProxyLog(root string, cfg config.Config, line string) error {
@@ -149,26 +157,6 @@ func killProcess(pid int) error {
 	return process.Signal(os.Interrupt)
 }
 
-func killPortListener(port int) error {
-	if port <= 0 {
-		return nil
-	}
-	// This is a recovery path for stale session state. The happy path uses
-	// recorded PIDs, but contributors will often interrupt local runs.
-	out, err := exec.Command("lsof", "-tiTCP:"+strconv.Itoa(port), "-sTCP:LISTEN").Output()
-	if err != nil {
-		return nil
-	}
-	for _, field := range strings.Fields(string(out)) {
-		pid, scanErr := strconv.Atoi(field)
-		if scanErr != nil {
-			continue
-		}
-		_ = killProcess(pid)
-	}
-	return nil
-}
-
 func killSandboxRunnerProcesses(root string, cfg config.Config) error {
 	buildBinary := filepath.Join(root, cfg.Sandbox.StateDir, "build", "c-core", "honch_sandbox_c_core")
 	patterns := []string{
@@ -192,4 +180,30 @@ func killSandboxRunnerProcesses(root string, cfg config.Config) error {
 		}
 	}
 	return nil
+}
+
+func readPID(path string) (int, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 {
+		return 0, false
+	}
+	return pid, true
+}
+
+func writePIDFile(path string, pid int) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(strconv.Itoa(pid)), 0o600)
+}
+
+func processAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	return syscall.Kill(pid, 0) == nil
 }

@@ -169,7 +169,7 @@ func newStopCommand(deps Dependencies) *cobra.Command {
 			if state.Proxy.PID > 0 {
 				_ = killProcess(state.Proxy.PID)
 			}
-			_ = killPortListener(cfg.Ports.Proxy)
+			_ = os.Remove(proxyPIDPath(root, cfg))
 			if state.Runner.PID > 0 && state.Runner.Detached {
 				_ = killProcess(state.Runner.PID)
 			}

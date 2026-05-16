@@ -712,6 +712,28 @@ func TestPortIsOpenDetectsListeningProxyPort(t *testing.T) {
 	}
 }
 
+func TestStartProxyProcessRejectsUnownedPortListener(t *testing.T) {
+	rootDir := t.TempDir()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	cfg := configForTest()
+	cfg.Ports.Proxy = listener.Addr().(*net.TCPAddr).Port
+
+	proc, err := startProxyProcess(rootDir, cfg)
+	if err == nil {
+		t.Fatal("startProxyProcess accepted unowned proxy port listener")
+	}
+	if proc != nil {
+		t.Fatalf("startProxyProcess returned process for unowned listener: %+v", proc)
+	}
+	if !strings.Contains(err.Error(), "already in use") {
+		t.Fatalf("error did not explain port ownership: %v", err)
+	}
+}
+
 func configForTest() config.Config {
 	return config.Config{
 		Sandbox: config.SandboxConfig{StateDir: ".honch-sandbox"},
