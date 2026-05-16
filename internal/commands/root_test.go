@@ -357,6 +357,36 @@ func TestBatteryExplainsMissingLevelBeforeSessionCheck(t *testing.T) {
 	}
 }
 
+func TestNestedCommandsExplainMissingInputs(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "adapters show", args: []string{"sandbox", "adapters", "show"}, want: "honch sandbox adapters show c-core"},
+		{name: "adapters doctor", args: []string{"sandbox", "adapters", "doctor"}, want: "honch sandbox adapters doctor c-core"},
+		{name: "scenario run", args: []string{"sandbox", "scenario", "run"}, want: "honch sandbox scenario run <file.yaml>"},
+		{name: "logs too many", args: []string{"sandbox", "logs", "device", "proxy"}, want: "honch sandbox logs [stack|device|proxy]"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
+			root.SetArgs(append([]string{"--plain"}, tc.args...))
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&out)
+
+			err := root.Execute()
+			if err == nil {
+				t.Fatal("command succeeded without required input")
+			}
+			combined := err.Error() + "\n" + out.String()
+			if !strings.Contains(combined, tc.want) {
+				t.Fatalf("command error missing %q:\n%s", tc.want, combined)
+			}
+		})
+	}
+}
+
 func TestLiveControlExplainsMissingSession(t *testing.T) {
 	root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
 	root.SetArgs([]string{"--plain", "sandbox", "battery", "--level", "8"})

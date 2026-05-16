@@ -679,7 +679,15 @@ func newLogsCommand(deps Dependencies) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs [stack|device|proxy]",
 		Short: "Print recent sandbox logs",
-		Args:  cobra.MaximumNArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 1 {
+				return errors.New(ui.FormatError("too many log targets", []ui.Row{
+					{Key: "required", Value: "honch sandbox logs [stack|device|proxy]"},
+					{Key: "example", Value: "honch sandbox logs device"},
+				}))
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, cfg, _, err := loadRuntime(deps)
 			if err != nil {

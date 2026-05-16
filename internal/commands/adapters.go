@@ -55,7 +55,16 @@ func newAdaptersShowCommand(deps Dependencies) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <adapter>",
 		Short: "Show sandbox adapter configuration",
-		Args:  cobra.ExactArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return errors.New(ui.FormatError("missing adapter name", []ui.Row{
+					{Key: "required", Value: "honch sandbox adapters show <adapter>"},
+					{Key: "example", Value: "honch sandbox adapters show c-core"},
+					{Key: "adapters", Value: "honch sandbox adapters list"},
+				}))
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadAdapterConfig(deps, args[0])
 			if err != nil {
@@ -117,7 +126,16 @@ func newAdaptersDoctorCommand(deps Dependencies) *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor <adapter>",
 		Short: "Check adapter-specific requirements",
-		Args:  cobra.ExactArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return errors.New(ui.FormatError("missing adapter name", []ui.Row{
+					{Key: "required", Value: "honch sandbox adapters doctor <adapter>"},
+					{Key: "example", Value: "honch sandbox adapters doctor c-core"},
+					{Key: "adapters", Value: "honch sandbox adapters list"},
+				}))
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, cfg, _, err := loadRuntime(deps)
 			if err != nil {
