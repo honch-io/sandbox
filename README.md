@@ -107,8 +107,11 @@ The command asks before running platform database migrations:
 Run platform database migrations with `bun run db:migrate`? [y/N]
 ```
 
-Answer `yes` when you want the sandbox to apply migrations and seed the sandbox
-project.
+Answer `yes` when you want the sandbox to apply migrations before seeding the
+sandbox project. Answer `no` to start with the current database schema. For
+non-interactive use, pass `--migrate` or `--skip-migrations`.
+
+Running `start` again while a sandbox session is already active is a no-op.
 
 Check health:
 

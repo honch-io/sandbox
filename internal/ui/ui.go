@@ -53,6 +53,10 @@ func Heading(text string) string {
 	return render(accent, text)
 }
 
+func Success(text string) string {
+	return fmt.Sprintf("%s %s", render(success, "✓"), text)
+}
+
 func KeyValue(key string, value any) string {
 	return FormatRow(key, value, 15)
 }

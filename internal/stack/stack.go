@@ -3,7 +3,6 @@ package stack
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -19,24 +18,26 @@ import (
 type Service struct {
 	Root              string
 	ApproveMigrations func() (bool, error)
+	SkipMigrations    bool
 }
 
 func New(root string) Service {
 	return Service{Root: root}
 }
 
-var ErrMigrationDeclined = errors.New("platform migration declined")
-
 func (s Service) Start(ctx context.Context, cfg config.Config) error {
-	if err := s.confirmPlatformMigrations(cfg); err != nil {
+	runMigrations, err := s.shouldApplyPlatformMigrations(cfg)
+	if err != nil {
 		return err
 	}
 	foreground, background := splitCommands(cfg.Stack.StartCommands)
 	if err := s.runCommands(ctx, cfg, foreground); err != nil {
 		return err
 	}
-	if err := s.applyPlatformMigrations(ctx, cfg); err != nil {
-		return err
+	if runMigrations {
+		if err := s.applyPlatformMigrations(ctx, cfg); err != nil {
+			return err
+		}
 	}
 	if err := s.seedSandboxProject(ctx, cfg); err != nil {
 		return err
@@ -335,21 +336,21 @@ func (s Service) applyPlatformMigrations(ctx context.Context, cfg config.Config)
 	return run(ctx, backendDir, "bun", "run", "db:migrate")
 }
 
-func (s Service) confirmPlatformMigrations(cfg config.Config) error {
-	if cfg.Repos.Platform == "" {
-		return nil
+func (s Service) shouldApplyPlatformMigrations(cfg config.Config) (bool, error) {
+	if cfg.Repos.Platform == "" || s.SkipMigrations {
+		return false, nil
 	}
 	if s.ApproveMigrations == nil {
-		return fmt.Errorf("platform migration approval is required")
+		return false, fmt.Errorf("platform migration approval is required")
 	}
 	approved, err := s.ApproveMigrations()
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !approved {
-		return ErrMigrationDeclined
+		return false, nil
 	}
-	return nil
+	return true, nil
 }
 
 func (s Service) applyPostgresPrerequisites(ctx context.Context) error {

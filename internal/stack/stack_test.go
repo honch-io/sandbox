@@ -2,7 +2,6 @@ package stack
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -81,7 +80,7 @@ func TestStopRemovesBackgroundPidFiles(t *testing.T) {
 	}
 }
 
-func TestStartDoesNotRunCommandsWhenMigrationDeclined(t *testing.T) {
+func TestStartSkipsMigrationsWhenMigrationDeclined(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "platform")
 	if err := os.MkdirAll(repo, 0o755); err != nil {
@@ -104,10 +103,10 @@ func TestStartDoesNotRunCommandsWhenMigrationDeclined(t *testing.T) {
 	}
 
 	err := service.Start(context.Background(), cfg)
-	if !errors.Is(err, ErrMigrationDeclined) {
-		t.Fatalf("Start error = %v, want ErrMigrationDeclined", err)
+	if err != nil {
+		t.Fatalf("Start returned error: %v", err)
 	}
-	if _, err := os.Stat(output); !os.IsNotExist(err) {
-		t.Fatalf("start command ran after migration decline, stat err: %v", err)
+	if _, err := os.Stat(output); err != nil {
+		t.Fatalf("start command did not run after migration decline: %v", err)
 	}
 }

@@ -110,29 +110,51 @@ func commandGroupRunE(cmd *cobra.Command, args []string) error {
 }
 
 func newStartCommand(deps Dependencies) *cobra.Command {
-	return &cobra.Command{
+	var migrate bool
+	var skipMigrations bool
+	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start the real local Honch stack",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if migrate && skipMigrations {
+				return errors.New(ui.FormatError("choose one migration mode", []ui.Row{
+					{Key: "--migrate", Value: "run platform migrations without prompting"},
+					{Key: "--skip-migrations", Value: "start without running platform migrations"},
+				}))
+			}
 			root, cfg, manager, err := loadRuntime(deps)
 			if err != nil {
 				return err
 			}
+			existingState, _ := manager.Load()
+			if existingState.Stack.Running {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), ui.Success("sandbox is already running"))
+				return nil
+			}
 			if err := writeProxyMode(root, cfg, proxy.ModeOnline); err != nil {
 				return err
 			}
-			existingState, _ := manager.Load()
 			service := stack.New(root)
 			if cfg.Repos.Platform != "" {
-				approved, err := confirm(cmd.InOrStdin(), cmd.OutOrStdout(), "Run platform database migrations with `bun run db:migrate`? [y/N] ")
-				if err != nil {
-					return err
-				}
-				if !approved {
-					return fmt.Errorf("start cancelled before migrations")
-				}
-				service.ApproveMigrations = func() (bool, error) {
-					return true, nil
+				switch {
+				case migrate:
+					service.ApproveMigrations = func() (bool, error) {
+						return true, nil
+					}
+				case skipMigrations:
+					service.SkipMigrations = true
+				default:
+					approved, err := confirm(cmd.InOrStdin(), cmd.OutOrStdout(), "Run platform database migrations with `bun run db:migrate`? [y/N] ")
+					if err != nil {
+						return err
+					}
+					if approved {
+						service.ApproveMigrations = func() (bool, error) {
+							return true, nil
+						}
+					} else {
+						service.SkipMigrations = true
+					}
 				}
 			}
 			if err := ui.WithSpinnerDone(cmd.Context(), cmd.ErrOrStderr(), "starting sandbox", "sandbox has been started", func() error {
@@ -155,14 +177,14 @@ func newStartCommand(deps Dependencies) *cobra.Command {
 				}
 				return manager.Save(state)
 			}); err != nil {
-				if errors.Is(err, stack.ErrMigrationDeclined) {
-					return fmt.Errorf("start cancelled before migrations")
-				}
 				return err
 			}
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&migrate, "migrate", false, "run platform migrations without prompting")
+	cmd.Flags().BoolVar(&skipMigrations, "skip-migrations", false, "start without running platform migrations")
+	return cmd
 }
 
 func newStopCommand(deps Dependencies) *cobra.Command {

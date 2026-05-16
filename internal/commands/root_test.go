@@ -185,6 +185,63 @@ func TestSandboxSetupDryRunOffersSupportedInstallActions(t *testing.T) {
 	}
 }
 
+func TestSandboxStartIsNoopWhenAlreadyRunning(t *testing.T) {
+	rootDir := t.TempDir()
+	manager := session.NewManager(filepath.Join(rootDir, ".honch-sandbox", "session.json"))
+	if err := manager.Save(session.State{Stack: session.StackState{Running: true}}); err != nil {
+		t.Fatal(err)
+	}
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "start"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("start returned error: %v\n%s", err, out.String())
+	}
+	combined := out.String()
+	if !strings.Contains(combined, "sandbox is already running") {
+		t.Fatalf("start did not report existing sandbox:\n%s", combined)
+	}
+	if strings.Contains(combined, "Run platform database migrations") {
+		t.Fatalf("start prompted for migrations even though sandbox was already running:\n%s", combined)
+	}
+}
+
+func TestSandboxStartRejectsConflictingMigrationFlags(t *testing.T) {
+	root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
+	root.SetArgs([]string{"--plain", "sandbox", "start", "--migrate", "--skip-migrations"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("start accepted conflicting migration flags")
+	}
+	if !strings.Contains(err.Error(), "choose one migration mode") {
+		t.Fatalf("start error did not explain migration flag conflict: %v", err)
+	}
+}
+
+func TestSandboxStartHelpShowsMigrationFlags(t *testing.T) {
+	root := NewRootCommand(Dependencies{})
+	root.SetArgs([]string{"--plain", "sandbox", "start", "--help"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("help returned error: %v", err)
+	}
+	for _, want := range []string{"--migrate", "--skip-migrations"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("start help missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
 func TestSandboxSetupDryRunOffersDockerImagePulls(t *testing.T) {
 	rootDir := t.TempDir()
 	binDir := filepath.Join(rootDir, "bin")
