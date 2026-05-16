@@ -18,13 +18,18 @@ import (
 )
 
 type CCoreRunner struct {
-	RepoRoot string
-	StateDir string
+	RepoRoot   string
+	StateDir   string
+	HarnessDir string
 }
 
 func (r CCoreRunner) Build(ctx context.Context) (string, error) {
 	buildDir := filepath.Join(r.StateDir, "build", "c-core")
-	sourceDir := filepath.Join(r.RepoRoot, "tools", "sandbox", "harnesses", "c-core")
+	harnessDir := r.HarnessDir
+	if harnessDir == "" {
+		harnessDir = "harnesses/c-core"
+	}
+	sourceDir := filepath.Join(r.RepoRoot, "tools", "sandbox", harnessDir)
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		return "", err
 	}
@@ -59,14 +64,23 @@ type EspIDFBuild struct {
 }
 
 type EspIDFRunner struct {
-	RepoRoot string
-	StateDir string
-	IDFPath  string
+	RepoRoot        string
+	StateDir        string
+	HarnessDir      string
+	IDFPath         string
+	Target          string
+	RunTool         string
+	EmulatorMachine string
+	EmulatorNetwork string
 }
 
 func (r EspIDFRunner) Build(ctx context.Context, settings EspIDFSettings) (EspIDFBuild, error) {
+	harnessDir := r.HarnessDir
+	if harnessDir == "" {
+		harnessDir = "harnesses/esp-idf"
+	}
 	build := EspIDFBuild{
-		ProjectDir: filepath.Join(r.RepoRoot, "tools", "sandbox", "harnesses", "esp-idf"),
+		ProjectDir: filepath.Join(r.RepoRoot, "tools", "sandbox", harnessDir),
 		BuildDir:   filepath.Join(r.StateDir, "build", "esp-idf"),
 	}
 	// The ESP-IDF sandbox build directory is fully managed by this runner. A
@@ -79,7 +93,11 @@ func (r EspIDFRunner) Build(ctx context.Context, settings EspIDFSettings) (EspID
 		return EspIDFBuild{}, err
 	}
 	args := espIDFBuildArgs(build.BuildDir, settings)
-	if err := r.runIDF(ctx, build.ProjectDir, append(args, "set-target", "esp32")...); err != nil {
+	target := r.Target
+	if target == "" {
+		target = "esp32"
+	}
+	if err := r.runIDF(ctx, build.ProjectDir, append(args, "set-target", target)...); err != nil {
 		return EspIDFBuild{}, err
 	}
 	if err := r.runIDF(ctx, build.ProjectDir, append(args, "build")...); err != nil {
@@ -239,8 +257,20 @@ func (r EspIDFRunner) prepareQEMUImages(ctx context.Context, build EspIDFBuild) 
 }
 
 func (r EspIDFRunner) startQEMU(ctx context.Context, build EspIDFBuild, stderr io.Writer) (*exec.Cmd, error) {
+	runTool := r.RunTool
+	if runTool == "" {
+		runTool = "qemu-system-xtensa"
+	}
+	machine := r.EmulatorMachine
+	if machine == "" {
+		machine = "esp32"
+	}
+	network := r.EmulatorNetwork
+	if network == "" {
+		network = "user,model=open_eth"
+	}
 	args := []string{
-		"-M", "esp32",
+		"-M", machine,
 		"-m", "4M",
 		"-drive", "file=" + filepath.Join(build.BuildDir, "qemu_flash.bin") + ",if=mtd,format=raw",
 		"-drive", "file=" + filepath.Join(build.BuildDir, "qemu_efuse.bin") + ",if=none,format=raw,id=efuse",
@@ -249,9 +279,9 @@ func (r EspIDFRunner) startQEMU(ctx context.Context, build EspIDFBuild, stderr i
 		"-nographic",
 		"-serial", qemuSerialArg(),
 		"-monitor", "none",
-		"-nic", "user,model=open_eth",
+		"-nic", network,
 	}
-	cmd := r.exportedCommand(ctx, "qemu-system-xtensa", args...)
+	cmd := r.exportedCommand(ctx, runTool, args...)
 	cmd.Dir = build.ProjectDir
 	cmd.Stdout = stderr
 	cmd.Stderr = stderr
