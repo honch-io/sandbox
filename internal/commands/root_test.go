@@ -359,6 +359,25 @@ func TestLiveControlExplainsMissingRunner(t *testing.T) {
 	}
 }
 
+func TestNetworkRequiresRunningSandbox(t *testing.T) {
+	root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
+	root.SetArgs([]string{"--plain", "sandbox", "network", "--offline"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("network succeeded without a running sandbox")
+	}
+	combined := err.Error() + "\n" + out.String()
+	for _, want := range []string{"sandbox is not running", "honch sandbox start", "honch sandbox network --offline"} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("network error missing %q:\n%s", want, combined)
+		}
+	}
+}
+
 func TestSandboxSetupDryRunOffersDockerImagePulls(t *testing.T) {
 	rootDir := t.TempDir()
 	binDir := filepath.Join(rootDir, "bin")
@@ -870,16 +889,20 @@ func TestNetworkCommandRequiresExactlyOneMode(t *testing.T) {
 	}
 }
 
-func TestNetworkCommandDoesNotCreateSessionWhenInactive(t *testing.T) {
+func TestNetworkCommandRejectsInactiveSandbox(t *testing.T) {
 	rootDir := t.TempDir()
 	root := NewRootCommand(Dependencies{RootDir: rootDir})
-	root.SetArgs([]string{"sandbox", "network", "--online"})
+	root.SetArgs([]string{"--plain", "sandbox", "network", "--online"})
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetErr(&out)
 
-	if err := root.Execute(); err != nil {
-		t.Fatalf("Execute returned error: %v", err)
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("network succeeded with inactive sandbox")
+	}
+	if !strings.Contains(err.Error(), "sandbox is not running") {
+		t.Fatalf("network error did not explain inactive sandbox: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(rootDir, ".honch-sandbox", "session.json")); !os.IsNotExist(err) {
 		t.Fatalf("network command created inactive session, stat err: %v", err)
