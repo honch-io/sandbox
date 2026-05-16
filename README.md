@@ -308,6 +308,17 @@ and QEMU-visible proxy endpoint at build time, then runs the firmware with
 `qemu-system-xtensa` using a TCP serial control channel.
 
 ```sh
+./honch sandbox adapters list
+./honch sandbox adapters show esp-idf
+./honch sandbox adapters doctor esp-idf
+./honch sandbox adapters validate
+```
+
+Inspects and validates registered adapter configs from `tools/sandbox/adapters`.
+Adapter commands are read-only except for the underlying tool checks performed
+by `doctor`.
+
+```sh
 ./honch sandbox qemu doctor
 ./honch sandbox qemu install [--idf-path <path>] [--ref v6.0.1] [--yes]
 ```

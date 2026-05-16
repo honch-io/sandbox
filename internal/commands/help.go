@@ -58,6 +58,7 @@ func sandboxHelpSections() []ui.CommandSection {
 			Name: "Harness",
 			Commands: []ui.CommandRow{
 				{Name: "run", Description: "Build and run an SDK harness"},
+				{Name: "adapters", Description: "Inspect adapter configs"},
 				{Name: "c-core", Description: "Build and run the POSIX C harness"},
 				{Name: "esp-idf", Description: "Build and run ESP-IDF firmware in QEMU"},
 				{Name: "battery", Description: "Set harness battery level"},

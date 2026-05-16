@@ -76,6 +76,7 @@ func newSandboxCommand(deps Dependencies) *cobra.Command {
 		newStatusCommand(deps),
 		newUpdateCommand(deps),
 		newRunCommand(deps),
+		newAdaptersCommand(deps),
 		newBatteryCommand(deps),
 		newNetworkCommand(deps),
 		newTrackCommand(deps),

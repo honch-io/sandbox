@@ -716,8 +716,8 @@ func writeAdapterRegistryForTest(t *testing.T, root string) {
 		t.Fatal(err)
 	}
 	files := map[string]string{
-		"c-core.yaml":  "name: c-core\nkind: posix\n",
-		"esp-idf.yaml": "name: esp-idf\nkind: qemu-esp32\n",
+		"c-core.yaml":  "name: c-core\nkind: posix\nharness: harnesses/c-core\nbuild:\n  tool: cmake\ncontrols:\n  transport: newline-json\n",
+		"esp-idf.yaml": "name: esp-idf\nkind: qemu-esp32\nharness: harnesses/esp-idf\nbuild:\n  tool: idf.py\n  target: esp32\nemulator:\n  tool: qemu-system-xtensa\ncontrols:\n  transport: newline-json-uart\n",
 	}
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
