@@ -104,6 +104,42 @@ func TestTailEventsSuppressesRowsAlreadySeenInLookback(t *testing.T) {
 	}
 }
 
+type cancelingTailClient struct {
+	cancel context.CancelFunc
+	calls  int
+}
+
+func (c *cancelingTailClient) Tail(ctx context.Context, cfg config.Config, since time.Time) (string, error) {
+	c.calls++
+	if c.calls == 2 {
+		c.cancel()
+	}
+	return "event-1\n", nil
+}
+
+type failingTailWriter struct{}
+
+func (failingTailWriter) Write(p []byte) (int, error) {
+	return 0, fmt.Errorf("stdout closed")
+}
+
+func TestTailEventsReturnsWriteError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &cancelingTailClient{cancel: cancel}
+	out := failingTailWriter{}
+
+	err := tailEvents(ctx, out, config.Config{}, client, time.Unix(0, 0), time.Millisecond)
+	if err == nil {
+		t.Fatal("tailEvents ignored the write failure")
+	}
+	if !strings.Contains(err.Error(), "stdout closed") {
+		t.Fatalf("tailEvents returned the wrong error: %v", err)
+	}
+	if client.calls != 1 {
+		t.Fatalf("Tail calls = %d, want 1", client.calls)
+	}
+}
+
 func TestTailSeenEvictsOldRows(t *testing.T) {
 	seen := newTailSeen(2)
 	if !seen.remember("event-1") {

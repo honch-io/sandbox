@@ -69,7 +69,9 @@ func tailEvents(ctx context.Context, out io.Writer, cfg config.Config, client ev
 			return err
 		}
 		if result != "" {
-			_, _ = writeUnseenTailRows(out, result, seen)
+			if _, err := writeUnseenTailRows(out, result, seen); err != nil {
+				return err
+			}
 		}
 		nextSince = pollStarted.Add(-eventTailLookback)
 		timer := time.NewTimer(interval)
