@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -100,14 +101,16 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 	}
 	env := runnerEnv(cfg.Ports.Proxy, cfg.Sandbox.Token, controlPath)
 	if detach {
-		proc, err := startRunnerSupervisor(root, cfg, adapterConfig.Name, binary, controlPath, env)
+		_, err := startRunnerSupervisor(root, cfg, adapterConfig.Name, binary, controlPath, env, func(proc *os.Process) error {
+			state, _ := manager.Load()
+			state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Pid, Detached: true, ControlPath: controlPath}
+			state.Proxy = runnerProxyState(cmd.Context(), cfg)
+			return manager.Save(state)
+		})
 		if err != nil {
 			return err
 		}
-		state, _ := manager.Load()
-		state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Pid, Detached: true, ControlPath: controlPath}
-		state.Proxy = runnerProxyState(cmd.Context(), cfg)
-		return manager.Save(state)
+		return nil
 	}
 	proc, err := runner.Start(cmd.Context(), binary, env, os.Stdin, cmd.OutOrStdout(), cmd.ErrOrStderr())
 	if err != nil {
@@ -116,7 +119,7 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 	state, _ := manager.Load()
 	state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Process.Pid, Detached: false, ControlPath: controlPath}
 	state.Proxy = runnerProxyState(cmd.Context(), cfg)
-	if err := manager.Save(state); err != nil {
+	if err := saveForegroundRunnerState(manager, state, proc); err != nil {
 		return err
 	}
 	err = proc.Wait()
@@ -148,14 +151,16 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 		return err
 	}
 	if detach {
-		proc, err := startRunnerSupervisor(root, cfg, adapterConfig.Name, build.BuildDir, controlPath, nil)
+		_, err := startRunnerSupervisor(root, cfg, adapterConfig.Name, build.BuildDir, controlPath, nil, func(proc *os.Process) error {
+			state, _ := manager.Load()
+			state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Pid, Detached: true, ControlPath: controlPath}
+			state.Proxy = runnerProxyState(cmd.Context(), cfg)
+			return manager.Save(state)
+		})
 		if err != nil {
 			return err
 		}
-		state, _ := manager.Load()
-		state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Pid, Detached: true, ControlPath: controlPath}
-		state.Proxy = runnerProxyState(cmd.Context(), cfg)
-		return manager.Save(state)
+		return nil
 	}
 	state, _ := manager.Load()
 	state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: os.Getpid(), Detached: false, ControlPath: controlPath}
@@ -168,6 +173,17 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 	state.Runner = session.RunnerState{}
 	_ = manager.Save(state)
 	return err
+}
+
+func saveForegroundRunnerState(manager session.Manager, state session.State, cmd *exec.Cmd) error {
+	if err := manager.Save(state); err != nil {
+		if cmd != nil && cmd.Process != nil {
+			_ = killProcess(cmd.Process.Pid)
+			_ = cmd.Wait()
+		}
+		return err
+	}
+	return nil
 }
 
 func espIDFEndpoint(cfg config.Config) string {

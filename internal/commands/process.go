@@ -109,7 +109,7 @@ func portIsOpen(ctx context.Context, port int, timeout time.Duration) bool {
 	return true
 }
 
-func startRunnerSupervisor(root string, cfg config.Config, adapter string, target string, controlPath string, env map[string]string) (*os.Process, error) {
+func startRunnerSupervisor(root string, cfg config.Config, adapter string, target string, controlPath string, env map[string]string, afterReady func(*os.Process) error) (*os.Process, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, err
@@ -137,7 +137,13 @@ func startRunnerSupervisor(root string, cfg config.Config, adapter string, targe
 		return nil, err
 	}
 	proc, err := releaseDetachedProcess(cmd, func(pid int) error {
-		return waitForRunnerReady(context.Background(), logPath, pid, runnerReadyTimeout())
+		if err := waitForRunnerReady(context.Background(), logPath, pid, runnerReadyTimeout()); err != nil {
+			return err
+		}
+		if afterReady != nil {
+			return afterReady(cmd.Process)
+		}
+		return nil
 	})
 	if err != nil {
 		_ = logFile.Close()
