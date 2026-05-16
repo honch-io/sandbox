@@ -125,6 +125,47 @@ func TestSandboxSetupDryRunOffersSupportedInstallActions(t *testing.T) {
 	}
 }
 
+func TestSandboxSetupRequiresConfirmationBeforeRunningActions(t *testing.T) {
+	rootDir := t.TempDir()
+	binDir := filepath.Join(rootDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"git", "docker", "bun", "cargo", "cmake"} {
+		path := filepath.Join(binDir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 99\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if runtime.GOOS == "darwin" {
+		path := filepath.Join(binDir, "brew")
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 99\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("IDF_PATH", "")
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: strings.NewReader("n\n")})
+	root.SetArgs([]string{"--plain", "sandbox", "setup"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("setup succeeded after confirmation declined")
+	}
+	combined := err.Error() + "\n" + out.String()
+	for _, want := range []string{
+		"Run supported setup actions? [y/N]",
+		"setup cancelled",
+	} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("setup output missing %q:\n%s", want, combined)
+		}
+	}
+}
+
 func TestSandboxDoctorReportsMissingPythonWithFix(t *testing.T) {
 	rootDir := t.TempDir()
 	binDir := filepath.Join(rootDir, "bin")
