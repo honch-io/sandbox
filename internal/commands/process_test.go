@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"context"
 	"errors"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,6 +38,28 @@ func TestReleaseDetachedProcessKillsProcessWhenReadinessFails(t *testing.T) {
 	eventually(t, time.Second, func() bool {
 		return !processAlive(pid)
 	})
+}
+
+func TestProxyReadyCallbackReturnsPIDWriteFailure(t *testing.T) {
+	root := t.TempDir()
+	cfg := configForTest()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	cfg.Ports.Proxy = listener.Addr().(*net.TCPAddr).Port
+	pidDir := filepath.Join(root, cfg.Sandbox.StateDir, "pids")
+	if err := os.MkdirAll(filepath.Dir(pidDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pidDir, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := waitForProxyReadyAndWritePID(context.Background(), root, cfg, os.Getpid(), time.Second); err == nil {
+		t.Fatal("proxy readiness callback ignored PID write failure")
+	}
 }
 
 func TestSaveForegroundRunnerStateKillsProcessWhenSessionSaveFails(t *testing.T) {

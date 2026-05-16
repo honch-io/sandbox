@@ -70,15 +70,21 @@ func startProxyProcess(root string, cfg config.Config) (*os.Process, error) {
 		return nil, err
 	}
 	proc, err := releaseDetachedProcess(cmd, func(pid int) error {
-		return waitForPortReady(context.Background(), cfg.Ports.Proxy, pid, 5*time.Second)
+		return waitForProxyReadyAndWritePID(context.Background(), root, cfg, pid, 5*time.Second)
 	})
 	if err != nil {
 		_ = logFile.Close()
 		return nil, err
 	}
 	_ = logFile.Close()
-	_ = writePIDFile(proxyPIDPath(root, cfg), proc.Pid)
 	return proc, nil
+}
+
+func waitForProxyReadyAndWritePID(ctx context.Context, root string, cfg config.Config, pid int, timeout time.Duration) error {
+	if err := waitForPortReady(ctx, cfg.Ports.Proxy, pid, timeout); err != nil {
+		return err
+	}
+	return writePIDFile(proxyPIDPath(root, cfg), pid)
 }
 
 func proxyPIDPath(root string, cfg config.Config) string {
