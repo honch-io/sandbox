@@ -6,7 +6,6 @@ import (
 	"io"
 	"os/exec"
 	"runtime"
-	"strings"
 
 	"github.com/honch/sdk/tools/sandbox/internal/config"
 	"github.com/honch/sdk/tools/sandbox/internal/ui"
@@ -185,12 +184,4 @@ func runShellCommand(ctx context.Context, stdout io.Writer, stderr io.Writer, co
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	return cmd.Run()
-}
-
-func setupCommandList(actions []setupAction) string {
-	commands := make([]string, 0, len(actions))
-	for _, action := range actions {
-		commands = append(commands, action.Command)
-	}
-	return strings.Join(commands, "\n")
 }
