@@ -554,6 +554,19 @@ func TestNetworkCommandDoesNotCreateSessionWhenInactive(t *testing.T) {
 	}
 }
 
+func TestRunnerProxyStateShowsNotRunningWhenProxyPortClosed(t *testing.T) {
+	cfg := configForTest()
+	cfg.Ports.Proxy = unusedTCPPort(t)
+
+	state := runnerProxyState(context.Background(), cfg)
+	if state.Mode != "not running" {
+		t.Fatalf("proxy mode = %q, want not running", state.Mode)
+	}
+	if state.Port != cfg.Ports.Proxy {
+		t.Fatalf("proxy port = %d, want %d", state.Port, cfg.Ports.Proxy)
+	}
+}
+
 func TestTrackCommandExplainsRequiredEventArgument(t *testing.T) {
 	root := NewRootCommand(Dependencies{})
 	root.SetArgs([]string{"sandbox", "track"})
@@ -645,6 +658,19 @@ func configForTest() config.Config {
 	return config.Config{
 		Sandbox: config.SandboxConfig{StateDir: ".honch-sandbox"},
 	}
+}
+
+func unusedTCPPort(t *testing.T) int {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return port
 }
 
 func writeAdapterRegistryForTest(t *testing.T, root string) {

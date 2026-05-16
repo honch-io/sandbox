@@ -293,8 +293,7 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 		}
 		state, _ := manager.Load()
 		state.Runner = session.RunnerState{Adapter: "c-core", PID: proc.Pid, Detached: true, ControlPath: controlPath}
-		state.Proxy.Mode = proxy.ModeOnline.String()
-		state.Proxy.Port = cfg.Ports.Proxy
+		state.Proxy = runnerProxyState(cmd.Context(), cfg)
 		return manager.Save(state)
 	}
 	proc, err := runner.Start(cmd.Context(), binary, env, os.Stdin, cmd.OutOrStdout(), cmd.ErrOrStderr())
@@ -303,8 +302,7 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 	}
 	state, _ := manager.Load()
 	state.Runner = session.RunnerState{Adapter: "c-core", PID: proc.Process.Pid, Detached: false, ControlPath: controlPath}
-	state.Proxy.Mode = proxy.ModeOnline.String()
-	state.Proxy.Port = cfg.Ports.Proxy
+	state.Proxy = runnerProxyState(cmd.Context(), cfg)
 	if err := manager.Save(state); err != nil {
 		return err
 	}
@@ -339,14 +337,12 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 		}
 		state, _ := manager.Load()
 		state.Runner = session.RunnerState{Adapter: "esp-idf", PID: proc.Pid, Detached: true, ControlPath: controlPath}
-		state.Proxy.Mode = proxy.ModeOnline.String()
-		state.Proxy.Port = cfg.Ports.Proxy
+		state.Proxy = runnerProxyState(cmd.Context(), cfg)
 		return manager.Save(state)
 	}
 	state, _ := manager.Load()
 	state.Runner = session.RunnerState{Adapter: "esp-idf", PID: os.Getpid(), Detached: false, ControlPath: controlPath}
-	state.Proxy.Mode = proxy.ModeOnline.String()
-	state.Proxy.Port = cfg.Ports.Proxy
+	state.Proxy = runnerProxyState(cmd.Context(), cfg)
 	if err := manager.Save(state); err != nil {
 		return err
 	}
@@ -359,6 +355,14 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 
 func espIDFEndpoint(cfg config.Config) string {
 	return fmt.Sprintf("http://10.0.2.2:%d", cfg.Ports.Proxy)
+}
+
+func runnerProxyState(ctx context.Context, cfg config.Config) session.ProxyState {
+	mode := "not running"
+	if portIsOpen(ctx, cfg.Ports.Proxy, 200*time.Millisecond) {
+		mode = proxy.ModeOnline.String()
+	}
+	return session.ProxyState{Mode: mode, Port: cfg.Ports.Proxy}
 }
 
 func newRunnerServeCommand(deps Dependencies) *cobra.Command {
