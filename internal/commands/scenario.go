@@ -97,6 +97,13 @@ func applyScenarioNetworkMode(deps Dependencies, rawMode string) error {
 	if err != nil {
 		return err
 	}
+	state, err := manager.Load()
+	if err != nil || !state.Stack.Running {
+		return errors.New(ui.FormatError("sandbox is not running", []ui.Row{
+			{Key: "start", Value: "honch sandbox start"},
+			{Key: "example", Value: "honch sandbox scenario run <file.yaml>"},
+		}))
+	}
 	if err := writeProxyMode(root, cfg, mode); err != nil {
 		return err
 	}
