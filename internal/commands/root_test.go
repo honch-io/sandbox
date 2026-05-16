@@ -420,6 +420,25 @@ func TestSandboxRunExplainsMissingAdapter(t *testing.T) {
 	}
 }
 
+func TestRunHelpUsesGenericAdapterPlaceholder(t *testing.T) {
+	root := NewRootCommand(Dependencies{})
+	root.SetArgs([]string{"--plain", "sandbox", "run", "--help"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("help returned error: %v", err)
+	}
+	help := ui.StripANSI(out.String())
+	if !strings.Contains(help, "honch sandbox run <adapter> [--detach]") {
+		t.Fatalf("run help did not use generic adapter placeholder:\n%s", help)
+	}
+	if strings.Contains(help, "run <c-core|esp-idf>") {
+		t.Fatalf("run help hardcoded concrete adapter names:\n%s", help)
+	}
+}
+
 func TestBatteryExplainsMissingLevelBeforeSessionCheck(t *testing.T) {
 	root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
 	root.SetArgs([]string{"--plain", "sandbox", "battery"})
