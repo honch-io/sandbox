@@ -920,7 +920,7 @@ func TestBatteryCommandPrintsControlConfirmation(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("battery returned error: %v", err)
 	}
-	if !strings.Contains(out.String(), "sent battery control") {
+	if !strings.Contains(out.String(), "battery control has been sent") {
 		t.Fatalf("battery did not print confirmation:\n%s", out.String())
 	}
 	data, err := os.ReadFile(controlPath)

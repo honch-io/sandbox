@@ -8,6 +8,7 @@ import (
 	"github.com/honch/sdk/tools/sandbox/internal/proxy"
 	"github.com/honch/sdk/tools/sandbox/internal/runner"
 	"github.com/honch/sdk/tools/sandbox/internal/scenario"
+	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +26,7 @@ func newScenarioCommand(deps Dependencies) *cobra.Command {
 			if err := runScenario(deps, cmd, sc); err != nil {
 				return err
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "scenario complete: %s (%d steps)\n", sc.Name, len(sc.Steps))
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Success(fmt.Sprintf("scenario has completed: %s (%d steps)", sc.Name, len(sc.Steps))))
 			return nil
 		},
 	})

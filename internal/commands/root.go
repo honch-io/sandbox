@@ -289,7 +289,7 @@ func newUpdateCommand(deps Dependencies) *cobra.Command {
 			if err := stack.New(root).Update(cmd.Context(), cfg); err != nil {
 				return err
 			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "stack repos updated")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Success("stack repos have been updated"))
 			return nil
 		},
 	}
@@ -576,7 +576,7 @@ func newTrackCommand(deps Dependencies) *cobra.Command {
 		}); err != nil {
 			return err
 		}
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "sent track control: %s\n", args[0])
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Success(fmt.Sprintf("track control has been sent: %s", args[0])))
 		return nil
 	}
 	cmd.Flags().StringVar(&properties, "properties", "{}", "JSON object properties")

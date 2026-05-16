@@ -287,6 +287,7 @@ func runQEMUInstallPlan(ctx context.Context, stdout io.Writer, stderr io.Writer,
 	}
 	_, _ = fmt.Fprintf(stdout, "\n%s\n", ui.Heading("ESP-IDF QEMU tools installed"))
 	_, _ = fmt.Fprintf(stdout, "managed idf path: %s\n", plan.IDFPath)
+	_, _ = fmt.Fprintln(stdout, ui.Success("ESP-IDF QEMU tools have been installed"))
 	_, _ = fmt.Fprintln(stdout, "next: honch sandbox qemu doctor")
 	return nil
 }

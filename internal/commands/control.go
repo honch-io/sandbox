@@ -19,7 +19,7 @@ func liveControlCommand(deps Dependencies, use string, short string, run func(io
 			if err := writeHarnessControl(deps, run); err != nil {
 				return err
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "sent %s control\n", cmd.Name())
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Success(fmt.Sprintf("%s control has been sent", cmd.Name())))
 			return nil
 		},
 	}
