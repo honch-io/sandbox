@@ -1142,7 +1142,7 @@ func TestRunnerServeResolvesAdapterKindFromRegistry(t *testing.T) {
 	if err := os.MkdirAll(adaptersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(adaptersDir, "host-smoke.yaml"), []byte("name: host-smoke\nkind: posix\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(adaptersDir, "host-smoke.yaml"), []byte("name: host-smoke\nkind: posix\nharness: harnesses/c-core\nbuild:\n  tool: cmake\ncontrols:\n  transport: newline-json\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

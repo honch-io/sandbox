@@ -34,6 +34,10 @@ build:
   target: esp32
 run:
   tool: qemu-system-xtensa
+emulator:
+  tool: qemu-system-xtensa
+controls:
+  transport: newline-json-uart
 `)
 
 	registry, err := LoadRegistry(root)
@@ -64,6 +68,34 @@ func TestLoadRegistryRejectsDuplicateAdapterNames(t *testing.T) {
 	_, err := LoadRegistry(root)
 	if err == nil {
 		t.Fatal("LoadRegistry accepted duplicate adapter names")
+	}
+}
+
+func TestLoadRegistryRejectsIncompletePosixAdapter(t *testing.T) {
+	root := t.TempDir()
+	adaptersDir := filepath.Join(root, "tools", "sandbox", "adapters")
+	if err := os.MkdirAll(adaptersDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeAdapter(t, adaptersDir, "c-core.yaml", "name: c-core\nkind: posix\n")
+
+	_, err := LoadRegistry(root)
+	if err == nil {
+		t.Fatal("LoadRegistry accepted incomplete posix adapter")
+	}
+}
+
+func TestLoadRegistryRejectsIncompleteQEMUAdapter(t *testing.T) {
+	root := t.TempDir()
+	adaptersDir := filepath.Join(root, "tools", "sandbox", "adapters")
+	if err := os.MkdirAll(adaptersDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeAdapter(t, adaptersDir, "esp-idf.yaml", "name: esp-idf\nkind: qemu-esp32\nharness: harnesses/esp-idf\n")
+
+	_, err := LoadRegistry(root)
+	if err == nil {
+		t.Fatal("LoadRegistry accepted incomplete qemu-esp32 adapter")
 	}
 }
 

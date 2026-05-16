@@ -73,6 +73,9 @@ func LoadRegistry(root string) (Registry, error) {
 		if cfg.Kind == "" {
 			return Registry{}, fmt.Errorf("%s: adapter kind is required", path)
 		}
+		if err := validateConfig(path, cfg); err != nil {
+			return Registry{}, err
+		}
 		if _, exists := registry.byName[cfg.Name]; exists {
 			return Registry{}, fmt.Errorf("duplicate adapter %q", cfg.Name)
 		}
@@ -91,6 +94,37 @@ func loadConfig(path string) (Config, error) {
 		return Config{}, fmt.Errorf("%s: %w", path, err)
 	}
 	return cfg, nil
+}
+
+func validateConfig(path string, cfg Config) error {
+	if cfg.Harness == "" {
+		return fmt.Errorf("%s: adapter harness is required", path)
+	}
+	switch cfg.Kind {
+	case "posix":
+		if cfg.Build.Tool == "" {
+			return fmt.Errorf("%s: posix adapter build.tool is required", path)
+		}
+		if cfg.Controls.Transport == "" {
+			return fmt.Errorf("%s: posix adapter controls.transport is required", path)
+		}
+	case "qemu-esp32":
+		if cfg.Build.Tool == "" {
+			return fmt.Errorf("%s: qemu-esp32 adapter build.tool is required", path)
+		}
+		if cfg.Build.Target == "" {
+			return fmt.Errorf("%s: qemu-esp32 adapter build.target is required", path)
+		}
+		if cfg.Emulator.Tool == "" {
+			return fmt.Errorf("%s: qemu-esp32 adapter emulator.tool is required", path)
+		}
+		if cfg.Controls.Transport == "" {
+			return fmt.Errorf("%s: qemu-esp32 adapter controls.transport is required", path)
+		}
+	default:
+		return fmt.Errorf("%s: unsupported adapter kind %q", path, cfg.Kind)
+	}
+	return nil
 }
 
 func (r Registry) Get(name string) (Config, bool) {
