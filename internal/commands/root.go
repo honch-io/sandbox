@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/honch/sdk/tools/sandbox/internal/adapter"
 	"github.com/honch/sdk/tools/sandbox/internal/config"
 	"github.com/honch/sdk/tools/sandbox/internal/health"
 	"github.com/honch/sdk/tools/sandbox/internal/proxy"
@@ -247,18 +248,26 @@ func newRunCommand(deps Dependencies) *cobra.Command {
 		Short: "Build and run an SDK sandbox harness",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			adapter := args[0]
+			adapterName := args[0]
 			root, cfg, manager, err := loadRuntime(deps)
 			if err != nil {
 				return err
 			}
-			switch adapter {
-			case "c-core":
+			registry, err := adapter.LoadRegistry(root)
+			if err != nil {
+				return err
+			}
+			adapterConfig, ok := registry.Get(adapterName)
+			if !ok {
+				return fmt.Errorf("unsupported adapter %q; expected %s", adapterName, registry.SupportedList())
+			}
+			switch adapterConfig.Kind {
+			case "posix":
 				return runCCoreAdapter(cmd, root, cfg, manager, detach)
-			case "esp-idf":
+			case "qemu-esp32":
 				return runEspIDFAdapter(cmd, root, cfg, manager, detach)
 			default:
-				return fmt.Errorf("unsupported adapter %q; expected c-core or esp-idf", adapter)
+				return fmt.Errorf("unsupported adapter kind %q for %s", adapterConfig.Kind, adapterConfig.Name)
 			}
 		},
 	}

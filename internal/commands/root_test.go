@@ -412,6 +412,7 @@ func TestQEMUInstallPlanRequiresHomebrewOnMacOS(t *testing.T) {
 
 func TestRunEspIDFMissingToolsSuggestsManagedInstall(t *testing.T) {
 	rootDir := t.TempDir()
+	writeAdapterRegistryForTest(t, rootDir)
 	root := NewRootCommand(Dependencies{RootDir: rootDir})
 	root.SetArgs([]string{"--plain", "sandbox", "run", "esp-idf", "--detach"})
 	t.Setenv("PATH", t.TempDir())
@@ -425,6 +426,26 @@ func TestRunEspIDFMissingToolsSuggestsManagedInstall(t *testing.T) {
 		t.Fatal("run esp-idf succeeded without tools")
 	}
 	for _, want := range []string{"ESP-IDF QEMU tools are not ready", "honch sandbox qemu install"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("run error missing %q:\n%s", want, err.Error())
+		}
+	}
+}
+
+func TestRunCommandRejectsUnknownAdapterWithRegistryNames(t *testing.T) {
+	rootDir := t.TempDir()
+	writeAdapterRegistryForTest(t, rootDir)
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "run", "micropython"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("run accepted unknown adapter")
+	}
+	for _, want := range []string{"unsupported adapter", "c-core", "esp-idf"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("run error missing %q:\n%s", want, err.Error())
 		}
@@ -582,5 +603,22 @@ func TestPortIsOpenDetectsListeningProxyPort(t *testing.T) {
 func configForTest() config.Config {
 	return config.Config{
 		Sandbox: config.SandboxConfig{StateDir: ".honch-sandbox"},
+	}
+}
+
+func writeAdapterRegistryForTest(t *testing.T, root string) {
+	t.Helper()
+	dir := filepath.Join(root, "tools", "sandbox", "adapters")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"c-core.yaml":  "name: c-core\nkind: posix\n",
+		"esp-idf.yaml": "name: esp-idf\nkind: qemu-esp32\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
