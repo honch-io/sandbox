@@ -5,8 +5,10 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -213,12 +215,13 @@ func TestEspIDFRunnerRunFailsWhenFirmwareNeverReportsReady(t *testing.T) {
 	if err := os.WriteFile(python, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	qemuPIDPath := filepath.Join(repoRoot, "qemu.pid")
 	qemu := filepath.Join(binDir, "qemu-system-xtensa")
-	if err := os.WriteFile(qemu, []byte("#!/bin/sh\nsleep 2\n"), 0o700); err != nil {
+	if err := os.WriteFile(qemu, []byte("#!/bin/sh\necho $$ > "+qemuPIDPath+"\nsleep 2\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("HONCH_SANDBOX_QEMU_READY_TIMEOUT", "200ms")
+	t.Setenv("HONCH_SANDBOX_QEMU_READY_TIMEOUT", "1s")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -250,6 +253,53 @@ func TestEspIDFRunnerRunFailsWhenFirmwareNeverReportsReady(t *testing.T) {
 	if !strings.Contains(err.Error(), "firmware did not report ready") {
 		t.Fatalf("error did not explain missing ready marker: %v", err)
 	}
+	pid := eventuallyReadPID(t, time.Second, qemuPIDPath)
+	eventuallyNoProcess(t, time.Second, pid)
+}
+
+func TestKillAndWaitReapsStartedProcess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script test is POSIX-only")
+	}
+	cmd := exec.Command("sh", "-c", "sleep 30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	killAndWait(cmd)
+	if cmd.ProcessState == nil {
+		t.Fatal("killAndWait did not wait for the process")
+	}
+}
+
+func eventuallyReadPID(t *testing.T, timeout time.Duration, path string) int {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			pid, parseErr := strconv.Atoi(strings.TrimSpace(string(data)))
+			if parseErr != nil {
+				t.Fatal(parseErr)
+			}
+			return pid
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("pid file %s was not written", path)
+	return 0
+}
+
+func eventuallyNoProcess(t *testing.T, timeout time.Duration, pid int) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if exec.Command("kill", "-0", strconv.Itoa(pid)).Run() != nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("process %d was still alive after %s", pid, timeout)
 }
 
 func TestEspIDFRunnerBuildReportsMissingIDFPy(t *testing.T) {

@@ -108,7 +108,7 @@ func (r EspIDFRunner) RunQEMU(ctx context.Context, build EspIDFBuild, controlPat
 	}
 	conn, err := dialQEMUSerial(ctx, qemuSerialAddr())
 	if err != nil {
-		_ = qemu.Process.Kill()
+		killAndWait(qemu)
 		return err
 	}
 	defer conn.Close()
@@ -127,30 +127,49 @@ func (r EspIDFRunner) RunQEMU(ctx context.Context, build EspIDFBuild, controlPat
 	readyTimeout := qemuReadyTimeout()
 	select {
 	case <-ctx.Done():
-		_ = qemu.Process.Kill()
+		killAndWaitDone(qemu, waitDone)
 		return ctx.Err()
 	case err := <-waitDone:
 		return fmt.Errorf("QEMU exited before firmware ready: %w", err)
 	case err := <-copyDone:
-		_ = qemu.Process.Kill()
+		killAndWaitDone(qemu, waitDone)
 		if err != nil {
 			return fmt.Errorf("QEMU serial closed before firmware ready: %w", err)
 		}
 		return fmt.Errorf("QEMU serial closed before firmware ready")
 	case <-readyDone:
 	case <-time.After(readyTimeout):
-		_ = qemu.Process.Kill()
+		killAndWaitDone(qemu, waitDone)
 		return fmt.Errorf("firmware did not report ready within %s", readyTimeout)
 	}
 	select {
 	case <-ctx.Done():
-		_ = qemu.Process.Kill()
+		killAndWaitDone(qemu, waitDone)
 		return ctx.Err()
 	case err := <-waitDone:
 		return err
 	case err := <-copyDone:
-		_ = qemu.Process.Kill()
+		killAndWaitDone(qemu, waitDone)
 		return err
+	}
+}
+
+func killAndWait(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	_ = cmd.Process.Kill()
+	_ = cmd.Wait()
+}
+
+func killAndWaitDone(cmd *exec.Cmd, waitDone <-chan error) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	_ = cmd.Process.Kill()
+	select {
+	case <-waitDone:
+	case <-time.After(5 * time.Second):
 	}
 }
 
