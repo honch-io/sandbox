@@ -46,9 +46,35 @@ static int expect_object(void)
     return 0;
 }
 
+static int expect_top_level_field_lookup(void)
+{
+    char value[64];
+    const char *line = "{\"meta\":{\"action\":\"battery\"},\"action\":\"network\"}";
+    if (!sandbox_json_string(line, "action", value, sizeof(value))) {
+        fprintf(stderr, "top-level action field was not parsed\n");
+        return 1;
+    }
+    if (strcmp(value, "network") != 0) {
+        fprintf(stderr, "top-level action = %s\n", value);
+        return 1;
+    }
+    return 0;
+}
+
+static int expect_invalid_json_rejected(void)
+{
+    char value[64];
+    if (sandbox_json_string("{\"action\":\"battery\" trailing", "action", value, sizeof(value))) {
+        fprintf(stderr, "invalid JSON was accepted\n");
+        return 1;
+    }
+    return 0;
+}
+
 int main(void)
 {
-    if (expect_string() != 0 || expect_signed_int() != 0 || expect_object() != 0) {
+    if (expect_string() != 0 || expect_signed_int() != 0 || expect_object() != 0 ||
+        expect_top_level_field_lookup() != 0 || expect_invalid_json_rejected() != 0) {
         return 1;
     }
     return 0;
