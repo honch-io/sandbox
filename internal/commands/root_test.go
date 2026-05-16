@@ -289,6 +289,33 @@ func TestSandboxStartHelpShowsMigrationFlags(t *testing.T) {
 	}
 }
 
+func TestSandboxRunRejectsActiveRunner(t *testing.T) {
+	rootDir := t.TempDir()
+	manager := session.NewManager(filepath.Join(rootDir, ".honch-sandbox", "session.json"))
+	if err := manager.Save(session.State{
+		Stack:  session.StackState{Running: true},
+		Runner: session.RunnerState{Adapter: "c-core", PID: os.Getpid(), Detached: true},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "run", "c-core", "--detach"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("run accepted a second active runner")
+	}
+	combined := err.Error() + "\n" + out.String()
+	for _, want := range []string{"sandbox runner is already active", "c-core", "honch sandbox stop"} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("run error missing %q:\n%s", want, combined)
+		}
+	}
+}
+
 func TestSandboxSetupDryRunOffersDockerImagePulls(t *testing.T) {
 	rootDir := t.TempDir()
 	binDir := filepath.Join(rootDir, "bin")

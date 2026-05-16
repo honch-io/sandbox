@@ -307,6 +307,13 @@ func newRunCommand(deps Dependencies) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if state, err := manager.Load(); err == nil && runnerActive(state.Runner) {
+				return errors.New(ui.FormatError("sandbox runner is already active", []ui.Row{
+					{Key: "runner", Value: state.Runner.Adapter},
+					{Key: "next", Value: "stop the active sandbox before starting another runner"},
+					{Key: "command", Value: "honch sandbox stop"},
+				}))
+			}
 			registry, err := adapter.LoadRegistry(root)
 			if err != nil {
 				return err
@@ -327,6 +334,16 @@ func newRunCommand(deps Dependencies) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&detach, "detach", false, "run harness in the background")
 	return cmd
+}
+
+func runnerActive(state session.RunnerState) bool {
+	if state.Adapter == "" {
+		return false
+	}
+	if state.PID <= 0 {
+		return true
+	}
+	return processAlive(state.PID)
 }
 
 func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager session.Manager, detach bool) error {
