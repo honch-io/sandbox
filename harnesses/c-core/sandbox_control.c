@@ -9,100 +9,7 @@
 #include <string.h>
 #include <unistd.h>
 
-static int parse_level(const char *line)
-{
-    const char *level = strstr(line, "\"level\"");
-    if (!level) {
-        return -1;
-    }
-    while (*level && (*level < '0' || *level > '9')) {
-        level++;
-    }
-    if (!*level) {
-        return -1;
-    }
-    return atoi(level);
-}
-
-static const char *json_field_value(const char *line, const char *field)
-{
-    char pattern[64];
-    snprintf(pattern, sizeof(pattern), "\"%s\"", field);
-    const char *cursor = strstr(line, pattern);
-    if (!cursor) {
-        return NULL;
-    }
-    cursor = strchr(cursor + strlen(pattern), ':');
-    if (!cursor) {
-        return NULL;
-    }
-    cursor++;
-    while (*cursor == ' ' || *cursor == '\t') {
-        cursor++;
-    }
-    return cursor;
-}
-
-static void parse_string_field(const char *line, const char *field, char *out, size_t out_size)
-{
-    const char *cursor = json_field_value(line, field);
-    if (!cursor || *cursor != '"') {
-        out[0] = '\0';
-        return;
-    }
-    cursor++;
-    size_t i = 0;
-    int escaped = 0;
-    while (*cursor && i + 1 < out_size) {
-        if (escaped) {
-            out[i++] = *cursor++;
-            escaped = 0;
-            continue;
-        }
-        if (*cursor == '\\') {
-            escaped = 1;
-            cursor++;
-            continue;
-        }
-        if (*cursor == '"') {
-            break;
-        }
-        out[i++] = *cursor++;
-    }
-    out[i] = '\0';
-}
-
-static void parse_object_field(const char *line, const char *field, char *out, size_t out_size)
-{
-    const char *cursor = json_field_value(line, field);
-    if (!cursor || *cursor != '{') {
-        out[0] = '\0';
-        return;
-    }
-    int depth = 0;
-    int in_string = 0;
-    int escaped = 0;
-    size_t i = 0;
-    while (*cursor && i + 1 < out_size) {
-        char ch = *cursor;
-        if (escaped) {
-            escaped = 0;
-        } else if (ch == '\\' && in_string) {
-            escaped = 1;
-        } else if (ch == '"') {
-            in_string = !in_string;
-        } else if (!in_string && ch == '{') {
-            depth++;
-        } else if (!in_string && ch == '}') {
-            depth--;
-        }
-        out[i++] = *cursor++;
-        if (depth == 0) {
-            break;
-        }
-    }
-    out[i] = '\0';
-}
+#include "sandbox_json.h"
 
 static void print_status(const char *name, honch_status_t status)
 {
@@ -112,9 +19,17 @@ static void print_status(const char *name, honch_status_t status)
 
 static void handle_line(sandbox_app_t *app, const char *line)
 {
-    if (strstr(line, "\"action\":\"battery\"")) {
-        int level = parse_level(line);
-        if (level >= 0 && level <= 100) {
+    char action[32];
+    if (!sandbox_json_string(line, "action", action, sizeof(action))) {
+        printf("{\"ok\":false,\"error\":\"missing_action\"}\n");
+        fflush(stdout);
+        return;
+    }
+
+    if (strcmp(action, "battery") == 0) {
+        int level = -1;
+        int has_level = sandbox_json_int(line, "level", &level);
+        if (has_level && level >= 0 && level <= 100) {
             sandbox_app_set_battery(app, level);
             printf("{\"ok\":true,\"battery\":%d}\n", app->battery_level);
         } else {
@@ -124,11 +39,11 @@ static void handle_line(sandbox_app_t *app, const char *line)
         return;
     }
 
-    if (strstr(line, "\"action\":\"track\"")) {
+    if (strcmp(action, "track") == 0) {
         char event[128];
         char properties[1024];
-        parse_string_field(line, "event", event, sizeof(event));
-        parse_object_field(line, "properties", properties, sizeof(properties));
+        sandbox_json_string(line, "event", event, sizeof(event));
+        sandbox_json_object(line, "properties", properties, sizeof(properties));
         if (!event[0]) {
             strcpy(event, "sandbox.event");
         }
@@ -139,12 +54,12 @@ static void handle_line(sandbox_app_t *app, const char *line)
         return;
     }
 
-    if (strstr(line, "\"action\":\"flush\"")) {
+    if (strcmp(action, "flush") == 0) {
         print_status("flush", sandbox_app_flush(app));
         return;
     }
 
-    if (strstr(line, "\"action\":\"reset\"")) {
+    if (strcmp(action, "reset") == 0) {
         print_status("reset", sandbox_app_reset(app));
         return;
     }

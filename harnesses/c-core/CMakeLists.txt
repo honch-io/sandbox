@@ -13,6 +13,7 @@ add_subdirectory(../../../../c-core c-core-sdk)
 add_executable(honch_sandbox_c_core
     app.c
     main.c
+    sandbox_json.c
     sandbox_control.c
 )
 target_link_libraries(honch_sandbox_c_core PRIVATE honch_c_core)
@@ -20,3 +21,14 @@ target_compile_definitions(honch_sandbox_c_core PRIVATE _POSIX_C_SOURCE=200809L 
 target_compile_options(honch_sandbox_c_core PRIVATE
     $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall -Wextra -Wpedantic -Werror>
 )
+
+enable_testing()
+
+add_executable(honch_sandbox_c_core_json_test
+    sandbox_json.c
+    sandbox_json_test.c
+)
+target_compile_options(honch_sandbox_c_core_json_test PRIVATE
+    $<$<C_COMPILER_ID:AppleClang,Clang,GNU>:-Wall -Wextra -Wpedantic -Werror>
+)
+add_test(NAME honch_sandbox_c_core_json_test COMMAND honch_sandbox_c_core_json_test)
