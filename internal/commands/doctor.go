@@ -34,6 +34,7 @@ func newDoctorCommand(deps Dependencies) *cobra.Command {
 type sandboxDoctorReport struct {
 	Host    []ui.Row
 	Repos   []ui.Row
+	Images  []ui.Row
 	QEMU    []ui.Row
 	Missing []ui.Row
 }
@@ -64,12 +65,14 @@ func buildSandboxDoctorReport(root string, cfg config.Config) sandboxDoctorRepor
 		{Key: "esp-idf", Value: valueOr(qemuStatus.IDFSource, "missing")},
 		{Key: "qemu", Value: qemuReadyValue(qemuStatus.Ready())},
 	}
+	images := dockerImageRows(context.Background(), cfg)
 
 	return sandboxDoctorReport{
 		Host:    host,
 		Repos:   repos,
+		Images:  images,
 		QEMU:    qemu,
-		Missing: missingDoctorRows(host, repos, qemuStatus.Ready()),
+		Missing: missingDoctorRows(host, repos, images, qemuStatus.Ready()),
 	}
 }
 
@@ -80,7 +83,7 @@ func qemuReadyValue(ready bool) string {
 	return "run honch sandbox qemu install"
 }
 
-func missingDoctorRows(host []ui.Row, repos []ui.Row, qemuReady bool) []ui.Row {
+func missingDoctorRows(host []ui.Row, repos []ui.Row, images []ui.Row, qemuReady bool) []ui.Row {
 	missing := []ui.Row{}
 	for _, row := range host {
 		if fmt.Sprint(row.Value) == "missing" {
@@ -90,6 +93,13 @@ func missingDoctorRows(host []ui.Row, repos []ui.Row, qemuReady bool) []ui.Row {
 	for _, row := range repos {
 		if fmt.Sprint(row.Value) == "missing" {
 			missing = append(missing, ui.Row{Key: row.Key, Value: "clone sibling repo beside SDK"})
+		}
+	}
+	for _, row := range images {
+		state := fmt.Sprint(row.Value)
+		if state == "missing" || state == "docker unhealthy" {
+			missing = append(missing, ui.Row{Key: "images", Value: "run honch sandbox images pull"})
+			break
 		}
 	}
 	if !qemuReady {
@@ -127,6 +137,7 @@ func (r sandboxDoctorReport) Sections() []ui.Section {
 	sections := []ui.Section{
 		{Name: "host", Rows: r.Host},
 		{Name: "repos", Rows: r.Repos},
+		{Name: "images", Rows: r.Images},
 		{Name: "emulator", Rows: r.QEMU},
 	}
 	if len(r.Missing) > 0 {

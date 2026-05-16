@@ -560,6 +560,48 @@ func TestSandboxDoctorReportsMissingPythonWithFix(t *testing.T) {
 	}
 }
 
+func TestSandboxDoctorReportsMissingDockerImages(t *testing.T) {
+	rootDir := t.TempDir()
+	binDir := filepath.Join(rootDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"git", "python", "bun", "cargo", "cmake", "idf.py", "qemu-system-xtensa"} {
+		path := filepath.Join(binDir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	docker := filepath.Join(binDir, "docker")
+	if err := os.WriteFile(docker, []byte("#!/bin/sh\nif [ \"$1 $2\" = \"image inspect\" ]; then exit 1; fi\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "darwin" {
+		path := filepath.Join(binDir, "brew")
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("IDF_PATH", rootDir)
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "doctor"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("doctor succeeded with missing Docker images")
+	}
+	combined := err.Error() + "\n" + out.String()
+	for _, want := range []string{"images", "postgres:16-alpine", "missing", "honch sandbox images pull"} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("doctor output missing %q:\n%s", want, combined)
+		}
+	}
+}
+
 func TestQEMUDoctorReportsMissingToolsWithInstallCommand(t *testing.T) {
 	root := NewRootCommand(Dependencies{})
 	root.SetArgs([]string{"--plain", "sandbox", "qemu", "doctor"})

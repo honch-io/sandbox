@@ -68,12 +68,11 @@ func setupActions(root string, cfg config.Config) []setupAction {
 			actions = append(actions, setupQEMUAction(root, cfg))
 		case "platform", "capture", "worker":
 			actions = append(actions, setupManualAction(key, fmt.Sprint(missing.Value)))
+		case "images":
+			actions = append(actions, setupDockerImagesAction(cfg))
 		default:
 			actions = append(actions, setupHostToolAction(key))
 		}
-	}
-	if commandStatus("docker") != "missing" && len(missingDockerImages(context.Background(), cfg)) > 0 {
-		actions = append(actions, setupDockerImagesAction(cfg))
 	}
 	return compactSetupActions(actions)
 }
