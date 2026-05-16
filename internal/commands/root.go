@@ -122,8 +122,17 @@ func newStartCommand(deps Dependencies) *cobra.Command {
 			}
 			existingState, _ := manager.Load()
 			service := stack.New(root)
-			service.ApproveMigrations = func() (bool, error) {
-				return confirm(cmd.InOrStdin(), cmd.OutOrStdout(), "Run platform database migrations with `bun run db:migrate`? [y/N] ")
+			if cfg.Repos.Platform != "" {
+				approved, err := confirm(cmd.InOrStdin(), cmd.OutOrStdout(), "Run platform database migrations with `bun run db:migrate`? [y/N] ")
+				if err != nil {
+					return err
+				}
+				if !approved {
+					return fmt.Errorf("start cancelled before migrations")
+				}
+				service.ApproveMigrations = func() (bool, error) {
+					return true, nil
+				}
 			}
 			if err := ui.WithSpinner(cmd.Context(), cmd.ErrOrStderr(), "starting local stack", func() error {
 				return service.Start(cmd.Context(), cfg)
