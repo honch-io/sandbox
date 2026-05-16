@@ -164,7 +164,9 @@ func (s Service) startBackground(ctx context.Context, dir string, cfg config.Con
 		cmd.Stdout = logFile
 		cmd.Stderr = logFile
 	}
-	if err := cmd.Start(); err != nil {
+	if err := startBackgroundCommand(cmd, func(pid int) error {
+		return s.writePID(cfg, command.Repo, pid)
+	}); err != nil {
 		if logFile != nil {
 			_ = logFile.Close()
 		}
@@ -173,7 +175,39 @@ func (s Service) startBackground(ctx context.Context, dir string, cfg config.Con
 	if logFile != nil {
 		_ = logFile.Close()
 	}
-	return s.writePID(cfg, command.Repo, cmd.Process.Pid)
+	return nil
+}
+
+func startBackgroundCommand(cmd *exec.Cmd, writePID func(int) error) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	pid := cmd.Process.Pid
+	if err := writePID(pid); err != nil {
+		_ = interruptProcessGroup(pid)
+		_ = cmd.Wait()
+		return err
+	}
+	if err := cmd.Process.Release(); err != nil {
+		_ = interruptProcessGroup(pid)
+		_ = cmd.Wait()
+		return err
+	}
+	return nil
+}
+
+func interruptProcessGroup(pid int) error {
+	if pid <= 0 {
+		return nil
+	}
+	if err := syscall.Kill(-pid, syscall.SIGINT); err == nil {
+		return nil
+	}
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return process.Signal(os.Interrupt)
 }
 
 func (s Service) backgroundAlreadyRunning(ctx context.Context, cfg config.Config, command config.CommandConfig) (bool, error) {

@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -61,6 +63,25 @@ func TestStartRunsBackgroundCommandsFromConfiguredSubdirectory(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, ".state", "pids", "capture.pid")); err != nil {
 		t.Fatalf("background pid file missing: %v", err)
+	}
+}
+
+func TestStartBackgroundCommandReleasesProcessAfterPIDWrite(t *testing.T) {
+	cmd := exec.Command("sh", "-c", "exit 0")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	var wrotePID int
+
+	if err := startBackgroundCommand(cmd, func(pid int) error {
+		wrotePID = pid
+		return nil
+	}); err != nil {
+		t.Fatalf("startBackgroundCommand returned error: %v", err)
+	}
+	if wrotePID <= 0 {
+		t.Fatalf("pid was not written: %d", wrotePID)
+	}
+	if err := cmd.Wait(); err == nil {
+		t.Fatal("released background process remained waitable")
 	}
 }
 
