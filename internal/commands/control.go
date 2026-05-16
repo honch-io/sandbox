@@ -1,11 +1,13 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"syscall"
 
+	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -30,14 +32,27 @@ func writeHarnessControl(deps Dependencies, run func(io.Writer) error) error {
 	}
 	state, err := manager.Load()
 	if err != nil {
-		return fmt.Errorf("no active sandbox session: %w", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return errors.New(ui.FormatError("no active sandbox session", []ui.Row{
+				{Key: "start", Value: "honch sandbox start"},
+				{Key: "runner", Value: "honch sandbox run c-core --detach"},
+			}))
+		}
+		return fmt.Errorf("load sandbox session: %w", err)
 	}
 	if state.Runner.ControlPath == "" {
-		return fmt.Errorf("active runner has no control path")
+		return errors.New(ui.FormatError("no active sandbox runner", []ui.Row{
+			{Key: "runner", Value: "honch sandbox run c-core --detach"},
+			{Key: "status", Value: "honch sandbox status"},
+		}))
 	}
 	f, err := os.OpenFile(state.Runner.ControlPath, os.O_WRONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return fmt.Errorf("open harness control: %w", err)
+		return errors.New(ui.FormatError("harness control is not available", []ui.Row{
+			{Key: "control", Value: state.Runner.ControlPath},
+			{Key: "status", Value: "honch sandbox status"},
+			{Key: "logs", Value: "honch sandbox logs device"},
+		}))
 	}
 	defer f.Close()
 	return run(f)

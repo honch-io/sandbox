@@ -316,6 +316,49 @@ func TestSandboxRunRejectsActiveRunner(t *testing.T) {
 	}
 }
 
+func TestLiveControlExplainsMissingSession(t *testing.T) {
+	root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
+	root.SetArgs([]string{"--plain", "sandbox", "battery", "--level", "8"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("battery succeeded without an active session")
+	}
+	combined := err.Error() + "\n" + out.String()
+	for _, want := range []string{"no active sandbox session", "honch sandbox start", "honch sandbox run c-core --detach"} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("control error missing %q:\n%s", want, combined)
+		}
+	}
+}
+
+func TestLiveControlExplainsMissingRunner(t *testing.T) {
+	rootDir := t.TempDir()
+	manager := session.NewManager(filepath.Join(rootDir, ".honch-sandbox", "session.json"))
+	if err := manager.Save(session.State{Stack: session.StackState{Running: true}}); err != nil {
+		t.Fatal(err)
+	}
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "flush"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("flush succeeded without an active runner")
+	}
+	combined := err.Error() + "\n" + out.String()
+	for _, want := range []string{"no active sandbox runner", "honch sandbox run c-core --detach", "honch sandbox status"} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("control error missing %q:\n%s", want, combined)
+		}
+	}
+}
+
 func TestSandboxSetupDryRunOffersDockerImagePulls(t *testing.T) {
 	rootDir := t.TempDir()
 	binDir := filepath.Join(rootDir, "bin")
