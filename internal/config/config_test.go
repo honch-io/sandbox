@@ -39,6 +39,21 @@ sandbox:
 	}
 }
 
+func TestLoadDerivesDefaultEndpointFromCapturePortOverride(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".honch-sandbox.yaml"), []byte("ports:\n  capture: 19001\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.Sandbox.EndpointURL != "http://127.0.0.1:19001" {
+		t.Fatalf("EndpointURL = %q", cfg.Sandbox.EndpointURL)
+	}
+}
+
 func TestLoadRejectsInvalidOverride(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, ".honch-sandbox.yaml"), []byte("ports:\n  proxy: nope\n"), 0o600); err != nil {

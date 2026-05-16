@@ -82,7 +82,17 @@ func Load(root string) (Config, error) {
 	if cfg.Sandbox.StateDir == "" {
 		cfg.Sandbox.StateDir = filepath.Join(root, ".honch-sandbox")
 	}
+	cfg.Sandbox.EndpointURL = resolvedEndpointURL(cfg)
 	return cfg, nil
+}
+
+func resolvedEndpointURL(cfg Config) string {
+	const defaultCapturePort = 8001
+	const defaultEndpointURL = "http://127.0.0.1:8001"
+	if cfg.Sandbox.EndpointURL == "" || (cfg.Sandbox.EndpointURL == defaultEndpointURL && cfg.Ports.Capture != defaultCapturePort) {
+		return fmt.Sprintf("http://127.0.0.1:%d", cfg.Ports.Capture)
+	}
+	return cfg.Sandbox.EndpointURL
 }
 
 func setDefaults(v *viper.Viper) {
