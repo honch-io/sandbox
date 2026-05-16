@@ -492,9 +492,13 @@ func newTrackCommand(deps Dependencies) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return writeHarnessControl(deps, func(w io.Writer) error {
+		if err := writeHarnessControl(deps, func(w io.Writer) error {
 			return runner.SendControl(w, "track", map[string]any{"event": args[0], "properties": props})
-		})
+		}); err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "sent track control: %s\n", args[0])
+		return nil
 	}
 	cmd.Flags().StringVar(&properties, "properties", "{}", "JSON object properties")
 	return cmd

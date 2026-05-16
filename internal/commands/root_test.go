@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/honch/sdk/tools/sandbox/internal/config"
+	"github.com/honch/sdk/tools/sandbox/internal/session"
 	"github.com/honch/sdk/tools/sandbox/internal/ui"
 )
 
@@ -564,6 +565,41 @@ func TestRunnerProxyStateShowsNotRunningWhenProxyPortClosed(t *testing.T) {
 	}
 	if state.Port != cfg.Ports.Proxy {
 		t.Fatalf("proxy port = %d, want %d", state.Port, cfg.Ports.Proxy)
+	}
+}
+
+func TestBatteryCommandPrintsControlConfirmation(t *testing.T) {
+	rootDir := t.TempDir()
+	controlPath := filepath.Join(rootDir, "control.jsonl")
+	if err := os.WriteFile(controlPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := session.NewManager(filepath.Join(rootDir, ".honch-sandbox", "session.json"))
+	if err := manager.Save(session.State{
+		Runner: session.RunnerState{Adapter: "c-core", ControlPath: controlPath},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "battery", "--level", "8"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("battery returned error: %v", err)
+	}
+	if !strings.Contains(out.String(), "sent battery control") {
+		t.Fatalf("battery did not print confirmation:\n%s", out.String())
+	}
+	data, err := os.ReadFile(controlPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"action":"battery"`, `"level":8`} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("control file missing %q:\n%s", want, string(data))
+		}
 	}
 }
 

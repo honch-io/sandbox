@@ -14,7 +14,11 @@ func liveControlCommand(deps Dependencies, use string, short string, run func(io
 		Use:   use,
 		Short: short,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return writeHarnessControl(deps, run)
+			if err := writeHarnessControl(deps, run); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "sent %s control\n", cmd.Name())
+			return nil
 		},
 	}
 }
