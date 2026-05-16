@@ -35,14 +35,16 @@ func writeHarnessControl(deps Dependencies, run func(io.Writer) error) error {
 		if errors.Is(err, os.ErrNotExist) {
 			return errors.New(ui.FormatError("no active sandbox session", []ui.Row{
 				{Key: "start", Value: "honch sandbox start"},
-				{Key: "runner", Value: "honch sandbox run c-core --detach"},
+				{Key: "runner", Value: "honch sandbox run <adapter> --detach"},
+				{Key: "adapters", Value: "honch sandbox adapters list"},
 			}))
 		}
 		return fmt.Errorf("load sandbox session: %w", err)
 	}
 	if state.Runner.ControlPath == "" {
 		return errors.New(ui.FormatError("no active sandbox runner", []ui.Row{
-			{Key: "runner", Value: "honch sandbox run c-core --detach"},
+			{Key: "runner", Value: "honch sandbox run <adapter> --detach"},
+			{Key: "adapters", Value: "honch sandbox adapters list"},
 			{Key: "status", Value: "honch sandbox status"},
 		}))
 	}

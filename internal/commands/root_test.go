@@ -554,10 +554,13 @@ func TestLiveControlExplainsMissingSession(t *testing.T) {
 		t.Fatal("battery succeeded without an active session")
 	}
 	combined := err.Error() + "\n" + out.String()
-	for _, want := range []string{"no active sandbox session", "honch sandbox start", "honch sandbox run c-core --detach"} {
+	for _, want := range []string{"no active sandbox session", "honch sandbox start", "honch sandbox run <adapter> --detach", "honch sandbox adapters list"} {
 		if !strings.Contains(combined, want) {
 			t.Fatalf("control error missing %q:\n%s", want, combined)
 		}
+	}
+	if strings.Contains(combined, "honch sandbox run c-core --detach") {
+		t.Fatalf("control error used adapter-specific guidance:\n%s", combined)
 	}
 }
 
@@ -578,10 +581,13 @@ func TestLiveControlExplainsMissingRunner(t *testing.T) {
 		t.Fatal("flush succeeded without an active runner")
 	}
 	combined := err.Error() + "\n" + out.String()
-	for _, want := range []string{"no active sandbox runner", "honch sandbox run c-core --detach", "honch sandbox status"} {
+	for _, want := range []string{"no active sandbox runner", "honch sandbox run <adapter> --detach", "honch sandbox adapters list", "honch sandbox status"} {
 		if !strings.Contains(combined, want) {
 			t.Fatalf("control error missing %q:\n%s", want, combined)
 		}
+	}
+	if strings.Contains(combined, "honch sandbox run c-core --detach") {
+		t.Fatalf("control error used adapter-specific guidance:\n%s", combined)
 	}
 }
 
