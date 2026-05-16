@@ -33,6 +33,7 @@ func TestRootCommandExposesSandboxContract(t *testing.T) {
 		"status",
 		"doctor",
 		"setup",
+		"images",
 		"update",
 		"run",
 		"battery",
@@ -181,6 +182,104 @@ func TestSandboxSetupDryRunOffersSupportedInstallActions(t *testing.T) {
 	}
 	if runtime.GOOS == "darwin" && !strings.Contains(combined, "brew install python") {
 		t.Fatalf("setup output missing brew Python install:\n%s", combined)
+	}
+}
+
+func TestSandboxSetupDryRunOffersDockerImagePulls(t *testing.T) {
+	rootDir := t.TempDir()
+	binDir := filepath.Join(rootDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"git", "bun", "cargo", "cmake", "python"} {
+		path := filepath.Join(binDir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	docker := filepath.Join(binDir, "docker")
+	if err := os.WriteFile(docker, []byte("#!/bin/sh\nif [ \"$1 $2\" = \"image inspect\" ]; then exit 1; fi\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("IDF_PATH", rootDir)
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "setup", "--dry-run"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("setup dry-run returned error: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "honch sandbox images pull") {
+		t.Fatalf("setup dry-run did not offer Docker image pulls:\n%s", out.String())
+	}
+}
+
+func TestSandboxImagesListReportsImageStatus(t *testing.T) {
+	rootDir := t.TempDir()
+	binDir := filepath.Join(rootDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	docker := filepath.Join(binDir, "docker")
+	script := "#!/bin/sh\nif [ \"$1 $2 $3\" = \"image inspect postgres:16-alpine\" ]; then exit 0; fi\nexit 1\n"
+	if err := os.WriteFile(docker, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "images", "list"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("images list returned error: %v\n%s", err, out.String())
+	}
+	for _, want := range []string{"Honch sandbox images", "postgres:16-alpine", "present", "redis:7-alpine", "missing"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("images list missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestSandboxImagesPullRunsDockerPulls(t *testing.T) {
+	rootDir := t.TempDir()
+	binDir := filepath.Join(rootDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(rootDir, "docker.log")
+	docker := filepath.Join(binDir, "docker")
+	script := "#!/bin/sh\necho \"$@\" >> " + logPath + "\nexit 0\n"
+	if err := os.WriteFile(docker, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "images", "pull"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("images pull returned error: %v\n%s", err, out.String())
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"pull postgres:16-alpine",
+		"pull redis:7-alpine",
+		"pull clickhouse/clickhouse-server:24.8",
+		"pull gcr.io/google.com/cloudsdktool/cloud-sdk:emulators",
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("docker pulls missing %q:\n%s", want, string(data))
+		}
 	}
 }
 

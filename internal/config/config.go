@@ -39,6 +39,7 @@ type SandboxConfig struct {
 }
 
 type StackConfig struct {
+	Images        []string        `mapstructure:"images"`
 	StartCommands []CommandConfig `mapstructure:"start_commands"`
 	StopCommands  []CommandConfig `mapstructure:"stop_commands"`
 }
@@ -98,6 +99,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("sandbox.clickhouse_database", "platform")
 	v.SetDefault("sandbox.endpoint_url", "http://127.0.0.1:8001")
 	v.SetDefault("sandbox.state_dir", ".honch-sandbox")
+	v.SetDefault("stack.images", []string{
+		"postgres:16-alpine",
+		"redis:7-alpine",
+		"clickhouse/clickhouse-server:24.8",
+		"gcr.io/google.com/cloudsdktool/cloud-sdk:emulators",
+	})
 	v.SetDefault("stack.start_commands", []map[string]any{
 		{"repo": "platform", "working_dir": "infra", "args": []string{"docker", "compose", "up", "-d"}},
 		{"repo": "capture", "args": []string{"cargo", "run"}, "background": true, "log": "capture.log"},

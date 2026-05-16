@@ -15,6 +15,11 @@ sandbox:
   endpoint_url: http://127.0.0.1:8001
   state_dir: .honch-sandbox
 stack:
+  images:
+    - postgres:16-alpine
+    - redis:7-alpine
+    - clickhouse/clickhouse-server:24.8
+    - gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
   start_commands:
     - repo: platform
       working_dir: infra

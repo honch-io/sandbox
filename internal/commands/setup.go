@@ -72,7 +72,21 @@ func setupActions(root string, cfg config.Config) []setupAction {
 			actions = append(actions, setupHostToolAction(key))
 		}
 	}
+	if commandStatus("docker") != "missing" && len(missingDockerImages(context.Background(), cfg)) > 0 {
+		actions = append(actions, setupDockerImagesAction(cfg))
+	}
 	return compactSetupActions(actions)
+}
+
+func setupDockerImagesAction(cfg config.Config) setupAction {
+	return setupAction{
+		Name:    "images",
+		Summary: "pull required Docker images",
+		Command: "honch sandbox images pull",
+		Run: func(ctx context.Context, stdout io.Writer, stderr io.Writer) error {
+			return pullDockerImages(ctx, stdout, stderr, cfg.Stack.Images)
+		},
+	}
 }
 
 func setupQEMUAction(root string, cfg config.Config) setupAction {

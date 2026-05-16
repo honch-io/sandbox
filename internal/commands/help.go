@@ -77,6 +77,7 @@ func sandboxHelpSections() []ui.CommandSection {
 			Commands: []ui.CommandRow{
 				{Name: "doctor", Description: "Check local prerequisites"},
 				{Name: "setup", Description: "Install supported prerequisites"},
+				{Name: "images", Description: "Pull required Docker images"},
 				{Name: "qemu", Description: "Manage ESP-IDF QEMU tooling"},
 			},
 		},

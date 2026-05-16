@@ -49,6 +49,15 @@ sibling repos, and emulator readiness, then prints the next missing setup steps.
 Use `sandbox setup` to print or run supported installer actions. It always shows
 the commands first, and asks before running unless `--yes` is passed.
 
+The local stack depends on Docker images for Postgres, Redis, ClickHouse, and the
+Pub/Sub emulator. Pull them explicitly on a new machine, or when Docker reports
+image-store or missing-blob errors:
+
+```sh
+./honch sandbox images list
+./honch sandbox images pull
+```
+
 Use `--plain` or `NO_COLOR=1` when you want unstyled output for scripts or
 logs:
 
@@ -87,6 +96,8 @@ local checkout differs.
 Start the real stack:
 
 ```sh
+./honch sandbox doctor
+./honch sandbox images pull
 ./honch sandbox start
 ```
 

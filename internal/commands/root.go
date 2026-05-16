@@ -73,6 +73,7 @@ func newSandboxCommand(deps Dependencies) *cobra.Command {
 	cmd.AddCommand(
 		newDoctorCommand(deps),
 		newSetupCommand(deps),
+		newImagesCommand(deps),
 		newStartCommand(deps),
 		newStopCommand(deps),
 		newStatusCommand(deps),
