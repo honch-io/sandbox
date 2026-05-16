@@ -12,7 +12,11 @@ import (
 	"github.com/honch/sdk/tools/sandbox/internal/ui"
 )
 
-func printLogs(out io.Writer, root string, cfg config.Config, target string) error {
+type logOptions struct {
+	Tail int
+}
+
+func printLogs(out io.Writer, root string, cfg config.Config, target string, opts logOptions) error {
 	logDir := filepath.Join(root, cfg.Sandbox.StateDir, "logs")
 	var files []string
 	switch target {
@@ -38,8 +42,14 @@ func printLogs(out io.Writer, root string, cfg config.Config, target string) err
 			}
 			return err
 		}
+		tail := opts.Tail
+		if tail <= 0 {
+			tail = 80
+		}
 		_, _ = fmt.Fprintf(out, "\n%s\n", ui.Heading(file))
-		_, _ = fmt.Fprint(out, tailString(string(data), 80))
+		_, _ = fmt.Fprintf(out, "path: %s\n", path)
+		_, _ = fmt.Fprintf(out, "showing last %d lines\n\n", tail)
+		_, _ = fmt.Fprint(out, tailString(string(data), tail))
 		if len(data) > 0 && data[len(data)-1] != '\n' {
 			_, _ = fmt.Fprintln(out)
 		}
@@ -49,6 +59,9 @@ func printLogs(out io.Writer, root string, cfg config.Config, target string) err
 
 func tailString(text string, maxLines int) string {
 	lines := strings.SplitAfter(text, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
 	if len(lines) > maxLines {
 		lines = lines[len(lines)-maxLines:]
 	}

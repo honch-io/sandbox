@@ -566,7 +566,8 @@ func newProxyServeCommand(deps Dependencies) *cobra.Command {
 }
 
 func newLogsCommand(deps Dependencies) *cobra.Command {
-	return &cobra.Command{
+	var tail int
+	cmd := &cobra.Command{
 		Use:   "logs [stack|device|proxy]",
 		Short: "Print recent sandbox logs",
 		Args:  cobra.MaximumNArgs(1),
@@ -579,7 +580,9 @@ func newLogsCommand(deps Dependencies) *cobra.Command {
 			if len(args) == 1 {
 				target = args[0]
 			}
-			return printLogs(cmd.OutOrStdout(), root, cfg, target)
+			return printLogs(cmd.OutOrStdout(), root, cfg, target, logOptions{Tail: tail})
 		},
 	}
+	cmd.Flags().IntVar(&tail, "tail", 80, "number of recent log lines to print per file")
+	return cmd
 }
