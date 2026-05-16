@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -17,30 +18,46 @@ type Client struct {
 }
 
 func (c Client) List(ctx context.Context, cfg config.Config, limit int) (string, error) {
-	return c.query(ctx, cfg, ListQuery(cfg, limit))
+	query, err := ListQuery(cfg, limit)
+	if err != nil {
+		return "", err
+	}
+	return c.query(ctx, cfg, query)
 }
 
 func (c Client) Tail(ctx context.Context, cfg config.Config, since time.Time) (string, error) {
-	return c.query(ctx, cfg, TailQuery(cfg, since))
+	query, err := TailQuery(cfg, since)
+	if err != nil {
+		return "", err
+	}
+	return c.query(ctx, cfg, query)
 }
 
-func TailQuery(cfg config.Config, since time.Time) string {
+func TailQuery(cfg config.Config, since time.Time) (string, error) {
+	database, err := clickHouseDatabaseIdentifier(cfg.Sandbox.ClickHouseDatabase)
+	if err != nil {
+		return "", err
+	}
 	return fmt.Sprintf(`SELECT event, timestamp, distinct_id FROM %s.events WHERE team_id = '%s' AND timestamp > '%s' ORDER BY timestamp ASC FORMAT JSONEachRow`,
-		cfg.Sandbox.ClickHouseDatabase,
+		database,
 		strings.ReplaceAll(cfg.Sandbox.ProjectID, "'", "''"),
 		since.UTC().Format("2006-01-02 15:04:05"),
-	)
+	), nil
 }
 
-func ListQuery(cfg config.Config, limit int) string {
+func ListQuery(cfg config.Config, limit int) (string, error) {
+	database, err := clickHouseDatabaseIdentifier(cfg.Sandbox.ClickHouseDatabase)
+	if err != nil {
+		return "", err
+	}
 	if limit <= 0 {
 		limit = 25
 	}
 	return fmt.Sprintf(`SELECT event, timestamp, distinct_id FROM %s.events WHERE team_id = '%s' ORDER BY timestamp DESC LIMIT %d FORMAT PrettyCompact`,
-		cfg.Sandbox.ClickHouseDatabase,
+		database,
 		strings.ReplaceAll(cfg.Sandbox.ProjectID, "'", "''"),
 		limit,
-	)
+	), nil
 }
 
 func (c Client) query(ctx context.Context, cfg config.Config, query string) (string, error) {
@@ -63,4 +80,13 @@ func (c Client) query(ctx context.Context, cfg config.Config, query string) (str
 		return "", fmt.Errorf("clickhouse returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
 	return string(body), nil
+}
+
+var clickHouseIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+func clickHouseDatabaseIdentifier(name string) (string, error) {
+	if !clickHouseIdentifierPattern.MatchString(name) {
+		return "", fmt.Errorf("invalid ClickHouse database %q", name)
+	}
+	return name, nil
 }
