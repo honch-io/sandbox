@@ -241,6 +241,21 @@ func TestSandboxStartIsNoopWhenAlreadyRunning(t *testing.T) {
 	}
 }
 
+func TestSandboxStopIsNoopWhenNotRunning(t *testing.T) {
+	root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
+	root.SetArgs([]string{"--plain", "sandbox", "stop"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("stop returned error: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "sandbox is not running") {
+		t.Fatalf("stop did not report inactive sandbox:\n%s", out.String())
+	}
+}
+
 func TestSandboxStartRejectsConflictingMigrationFlags(t *testing.T) {
 	root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
 	root.SetArgs([]string{"--plain", "sandbox", "start", "--migrate", "--skip-migrations"})

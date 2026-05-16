@@ -196,7 +196,11 @@ func newStopCommand(deps Dependencies) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			state, _ := manager.Load()
+			state, err := manager.Load()
+			if err != nil || !state.Stack.Running {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Success("sandbox is not running"))
+				return nil
+			}
 			if state.Proxy.PID > 0 {
 				_ = killProcess(state.Proxy.PID)
 			}
@@ -211,7 +215,7 @@ func newStopCommand(deps Dependencies) *cobra.Command {
 			if err := manager.Clear(); err != nil {
 				return err
 			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "sandbox stopped")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Success("sandbox has been stopped"))
 			return nil
 		},
 	}
