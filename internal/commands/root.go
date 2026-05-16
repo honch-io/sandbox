@@ -108,7 +108,9 @@ func newStartCommand(deps Dependencies) *cobra.Command {
 			service.ApproveMigrations = func() (bool, error) {
 				return confirm(cmd.InOrStdin(), cmd.OutOrStdout(), "Run platform database migrations with `bun run db:migrate`? [y/N] ")
 			}
-			if err := service.Start(cmd.Context(), cfg); err != nil {
+			if err := ui.WithSpinner(cmd.Context(), cmd.ErrOrStderr(), "starting local stack", func() error {
+				return service.Start(cmd.Context(), cfg)
+			}); err != nil {
 				if errors.Is(err, stack.ErrMigrationDeclined) {
 					return fmt.Errorf("start cancelled before migrations")
 				}
@@ -281,8 +283,12 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 	if err != nil {
 		return err
 	}
-	binary, err := r.Build(cmd.Context())
-	if err != nil {
+	var binary string
+	if err := ui.WithSpinner(cmd.Context(), cmd.ErrOrStderr(), "building c-core harness", func() error {
+		var buildErr error
+		binary, buildErr = r.Build(cmd.Context())
+		return buildErr
+	}); err != nil {
 		return err
 	}
 	env := runnerEnv(cfg.Ports.Proxy, cfg.Sandbox.Token, controlPath)
@@ -323,11 +329,15 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 	if err != nil {
 		return err
 	}
-	build, err := r.Build(cmd.Context(), runner.EspIDFSettings{
-		Endpoint: espIDFEndpoint(cfg),
-		Token:    cfg.Sandbox.Token,
-	})
-	if err != nil {
+	var build runner.EspIDFBuild
+	if err := ui.WithSpinner(cmd.Context(), cmd.ErrOrStderr(), "building ESP-IDF firmware", func() error {
+		var buildErr error
+		build, buildErr = r.Build(cmd.Context(), runner.EspIDFSettings{
+			Endpoint: espIDFEndpoint(cfg),
+			Token:    cfg.Sandbox.Token,
+		})
+		return buildErr
+	}); err != nil {
 		return err
 	}
 	if detach {
