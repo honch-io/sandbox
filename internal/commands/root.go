@@ -163,6 +163,7 @@ func newStartCommand(deps Dependencies) *cobra.Command {
 				}
 				proxyProc, err := startProxyProcess(root, cfg)
 				if err != nil {
+					rollbackStartedSandbox(cmd.Context(), root, cfg, manager, nil)
 					return err
 				}
 				proxyPID := existingState.Proxy.PID
@@ -175,7 +176,11 @@ func newStartCommand(deps Dependencies) *cobra.Command {
 					Runner:    existingState.Runner,
 					Proxy:     session.ProxyState{Mode: proxy.ModeOnline.String(), Port: cfg.Ports.Proxy, PID: proxyPID},
 				}
-				return manager.Save(state)
+				if err := manager.Save(state); err != nil {
+					rollbackStartedSandbox(cmd.Context(), root, cfg, manager, proxyProc)
+					return err
+				}
+				return nil
 			}); err != nil {
 				return err
 			}
@@ -221,6 +226,15 @@ func newStopCommand(deps Dependencies) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func rollbackStartedSandbox(ctx context.Context, root string, cfg config.Config, manager session.Manager, proxyProc *os.Process) {
+	if proxyProc != nil {
+		_ = killProcess(proxyProc.Pid)
+	}
+	_ = os.Remove(proxyPIDPath(root, cfg))
+	_ = stack.New(root).Stop(ctx, cfg)
+	_ = manager.Clear()
 }
 
 func sandboxHasActiveProcesses(state session.State) bool {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -292,6 +293,67 @@ func TestSandboxStartRejectsConflictingMigrationFlags(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "choose one migration mode") {
 		t.Fatalf("start error did not explain migration flag conflict: %v", err)
+	}
+}
+
+func TestSandboxStartRollsBackStackWhenProxyStartupFails(t *testing.T) {
+	rootDir := t.TempDir()
+	serviceDir := filepath.Join(rootDir, "service")
+	if err := os.MkdirAll(serviceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	startedPath := filepath.Join(rootDir, "started.txt")
+	stoppedPath := filepath.Join(rootDir, "stopped.txt")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	proxyPort := listener.Addr().(*net.TCPAddr).Port
+	configBody := strings.Join([]string{
+		"repos:",
+		"  capture: service",
+		"  platform: ''",
+		"  worker: ''",
+		"ports:",
+		"  capture: 0",
+		"  worker: 0",
+		"  proxy: " + strconv.Itoa(proxyPort),
+		"sandbox:",
+		"  state_dir: .state",
+		"  project_id: ''",
+		"  token: ''",
+		"stack:",
+		"  start_commands:",
+		"    - repo: capture",
+		"      args: [sh, -c, 'touch " + startedPath + "']",
+		"  stop_commands:",
+		"    - repo: capture",
+		"      args: [sh, -c, 'touch " + stoppedPath + "']",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(rootDir, ".honch-sandbox.yaml"), []byte(configBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "start", "--skip-migrations"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err = root.Execute()
+	if err == nil {
+		t.Fatal("start succeeded even though proxy port was already occupied")
+	}
+	if _, err := os.Stat(startedPath); err != nil {
+		t.Fatalf("start command did not run before proxy failure: %v", err)
+	}
+	if _, err := os.Stat(stoppedPath); err != nil {
+		t.Fatalf("start failure did not roll back the stack: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(rootDir, ".state", "session.json")); !os.IsNotExist(err) {
+		t.Fatalf("failed start left session state behind, stat err: %v", err)
 	}
 }
 
