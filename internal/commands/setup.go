@@ -28,7 +28,6 @@ func newSetupCommand(deps Dependencies) *cobra.Command {
 				{Name: "actions", Rows: setupActionRows(actions)},
 			}))
 			if len(actions) == 0 {
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "setup is complete")
 				return nil
 			}
 			if dryRun {
