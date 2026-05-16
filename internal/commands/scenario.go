@@ -68,7 +68,13 @@ func runScenario(deps Dependencies, cmd *cobra.Command, sc scenario.Scenario) er
 				return err
 			}
 		case step.Wait != nil:
-			time.Sleep(step.Wait.Duration)
+			timer := time.NewTimer(step.Wait.Duration)
+			select {
+			case <-cmd.Context().Done():
+				timer.Stop()
+				return cmd.Context().Err()
+			case <-timer.C:
+			}
 		case step.Flush != nil:
 			if err := sendScenarioControl(deps, "flush", nil); err != nil {
 				return err
