@@ -1079,6 +1079,28 @@ func TestRunCommandRejectsUnknownAdapterWithRegistryNames(t *testing.T) {
 	}
 }
 
+func TestRunnerServeResolvesAdapterKindFromRegistry(t *testing.T) {
+	rootDir := t.TempDir()
+	adaptersDir := filepath.Join(rootDir, "tools", "sandbox", "adapters")
+	if err := os.MkdirAll(adaptersDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(adaptersDir, "host-smoke.yaml"), []byte("name: host-smoke\nkind: posix\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	adapterConfig, serve, err := runnerSupervisorForAdapter(rootDir, "host-smoke")
+	if err != nil {
+		t.Fatalf("runnerSupervisorForAdapter returned error: %v", err)
+	}
+	if adapterConfig.Kind != "posix" {
+		t.Fatalf("adapter kind = %q, want posix", adapterConfig.Kind)
+	}
+	if serve == nil {
+		t.Fatal("serve function was nil")
+	}
+}
+
 func TestRootHelpHidesGeneratedHelpAndCompletion(t *testing.T) {
 	root := NewRootCommand(Dependencies{})
 	root.SetArgs([]string{"--help"})

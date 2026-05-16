@@ -184,7 +184,7 @@ func runnerProxyState(ctx context.Context, cfg config.Config) session.ProxyState
 
 func newRunnerServeCommand(deps Dependencies) *cobra.Command {
 	return &cobra.Command{
-		Use:    "runner-serve <adapter> <binary> <control-path>",
+		Use:    "runner-serve <adapter> <target> <control-path>",
 		Short:  "Run a supervised sandbox harness",
 		Hidden: true,
 		Args:   cobra.ExactArgs(3),
@@ -193,26 +193,58 @@ func newRunnerServeCommand(deps Dependencies) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			switch args[0] {
-			case "c-core":
-				proc, err := runner.Start(context.Background(), args[1], runnerEnv(cfg.Ports.Proxy, cfg.Sandbox.Token, args[2]), os.Stdin, cmd.OutOrStdout(), cmd.ErrOrStderr())
-				if err != nil {
-					return err
-				}
-				return proc.Wait()
-			case "esp-idf":
-				idfPath, _ := resolveIDFPath(root, cfg)
-				r := runner.EspIDFRunner{RepoRoot: root, StateDir: filepath.Join(root, cfg.Sandbox.StateDir), IDFPath: idfPath}
-				build := runner.EspIDFBuild{
-					ProjectDir: filepath.Join(root, "tools", "sandbox", "harnesses", "esp-idf"),
-					BuildDir:   args[1],
-				}
-				return r.Run(context.Background(), build, args[2], cmd.OutOrStdout(), cmd.ErrOrStderr())
-			default:
-				return fmt.Errorf("unsupported adapter %q; expected c-core or esp-idf", args[0])
+			adapterConfig, serve, err := runnerSupervisorForAdapter(root, args[0])
+			if err != nil {
+				return err
 			}
+			return serve(cmd, root, cfg, adapterConfig, args[1], args[2])
 		},
 	}
+}
+
+type adapterServeFunc func(*cobra.Command, string, config.Config, adapter.Config, string, string) error
+
+func runnerSupervisorForAdapter(root string, adapterName string) (adapter.Config, adapterServeFunc, error) {
+	registry, err := adapter.LoadRegistry(root)
+	if err != nil {
+		return adapter.Config{}, nil, err
+	}
+	adapterConfig, ok := registry.Get(adapterName)
+	if !ok {
+		return adapter.Config{}, nil, fmt.Errorf("unsupported adapter %q; expected %s", adapterName, registry.SupportedList())
+	}
+	serve, ok := adapterSupervisorForKind(adapterConfig.Kind)
+	if !ok {
+		return adapter.Config{}, nil, fmt.Errorf("unsupported adapter kind %q for %s", adapterConfig.Kind, adapterConfig.Name)
+	}
+	return adapterConfig, serve, nil
+}
+
+func adapterSupervisorForKind(kind string) (adapterServeFunc, bool) {
+	servers := map[string]adapterServeFunc{
+		"posix":      servePosixRunner,
+		"qemu-esp32": serveEspIDFRunner,
+	}
+	serve, ok := servers[kind]
+	return serve, ok
+}
+
+func servePosixRunner(cmd *cobra.Command, root string, cfg config.Config, adapterConfig adapter.Config, target string, controlPath string) error {
+	proc, err := runner.Start(context.Background(), target, runnerEnv(cfg.Ports.Proxy, cfg.Sandbox.Token, controlPath), os.Stdin, cmd.OutOrStdout(), cmd.ErrOrStderr())
+	if err != nil {
+		return err
+	}
+	return proc.Wait()
+}
+
+func serveEspIDFRunner(cmd *cobra.Command, root string, cfg config.Config, adapterConfig adapter.Config, target string, controlPath string) error {
+	idfPath, _ := resolveIDFPath(root, cfg)
+	r := runner.EspIDFRunner{RepoRoot: root, StateDir: filepath.Join(root, cfg.Sandbox.StateDir), IDFPath: idfPath}
+	build := runner.EspIDFBuild{
+		ProjectDir: filepath.Join(root, "tools", "sandbox", adapterConfig.Harness),
+		BuildDir:   target,
+	}
+	return r.Run(context.Background(), build, controlPath, cmd.OutOrStdout(), cmd.ErrOrStderr())
 }
 
 func runnerEnv(proxyPort int, token string, controlPath string) map[string]string {
