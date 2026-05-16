@@ -82,6 +82,28 @@ func TestRootHelpUsesSandboxHelpFormat(t *testing.T) {
 	}
 }
 
+func TestUnknownNestedCommandsReturnErrors(t *testing.T) {
+	for _, args := range [][]string{
+		{"sandbox", "nope"},
+		{"sandbox", "events", "nope"},
+		{"sandbox", "qemu", "nope"},
+	} {
+		root := NewRootCommand(Dependencies{})
+		root.SetArgs(append([]string{"--plain"}, args...))
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&out)
+
+		err := root.Execute()
+		if err == nil {
+			t.Fatalf("%v succeeded; output:\n%s", args, out.String())
+		}
+		if !strings.Contains(err.Error(), "unknown command") {
+			t.Fatalf("%v error did not explain unknown command: %v", args, err)
+		}
+	}
+}
+
 func TestSandboxSetupDryRunOffersSupportedInstallActions(t *testing.T) {
 	rootDir := t.TempDir()
 	binDir := filepath.Join(rootDir, "bin")

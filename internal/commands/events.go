@@ -9,7 +9,7 @@ import (
 )
 
 func newEventsCommand(deps Dependencies) *cobra.Command {
-	cmd := &cobra.Command{Use: "events", Short: "Query ClickHouse sandbox events"}
+	cmd := &cobra.Command{Use: "events", Short: "Query ClickHouse sandbox events", Args: rejectUnknownArgs, RunE: commandGroupRunE}
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "List recent ingested events",

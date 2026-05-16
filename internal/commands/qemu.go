@@ -22,6 +22,8 @@ func newQEMUCommand(deps Dependencies) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "qemu",
 		Short: "Manage ESP-IDF QEMU tooling",
+		Args:  rejectUnknownArgs,
+		RunE:  commandGroupRunE,
 	}
 	cmd.AddCommand(newQEMUDoctorCommand(deps), newQEMUInstallCommand(deps))
 	return cmd

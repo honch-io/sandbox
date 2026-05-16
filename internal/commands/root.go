@@ -67,6 +67,8 @@ func newSandboxCommand(deps Dependencies) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sandbox",
 		Short: "Run the Honch SDK E2E sandbox",
+		Args:  rejectUnknownArgs,
+		RunE:  commandGroupRunE,
 	}
 	cmd.AddCommand(
 		newDoctorCommand(deps),
@@ -90,6 +92,20 @@ func newSandboxCommand(deps Dependencies) *cobra.Command {
 		newRunnerServeCommand(deps),
 	)
 	return cmd
+}
+
+func rejectUnknownArgs(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	return fmt.Errorf("unknown command %q for %s", args[0], cmd.CommandPath())
+}
+
+func commandGroupRunE(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return rejectUnknownArgs(cmd, args)
+	}
+	return cmd.Help()
 }
 
 func newStartCommand(deps Dependencies) *cobra.Command {

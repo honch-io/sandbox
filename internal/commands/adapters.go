@@ -15,6 +15,8 @@ func newAdaptersCommand(deps Dependencies) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "adapters",
 		Short: "Inspect sandbox adapters",
+		Args:  rejectUnknownArgs,
+		RunE:  commandGroupRunE,
 	}
 	cmd.AddCommand(
 		newAdaptersListCommand(deps),
