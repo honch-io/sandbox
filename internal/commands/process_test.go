@@ -62,6 +62,19 @@ func TestProxyReadyCallbackReturnsPIDWriteFailure(t *testing.T) {
 	}
 }
 
+func TestProxySessionPIDFallsBackToPIDFile(t *testing.T) {
+	root := t.TempDir()
+	cfg := configForTest()
+	if err := writePIDFile(proxyPIDPath(root, cfg), 12345); err != nil {
+		t.Fatal(err)
+	}
+
+	pid := proxySessionPID(root, cfg, session.ProxyState{}, nil)
+	if pid != 12345 {
+		t.Fatalf("proxySessionPID = %d, want pid file value", pid)
+	}
+}
+
 func TestSaveForegroundRunnerStateKillsProcessWhenSessionSaveFails(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("process group signaling is POSIX-only")

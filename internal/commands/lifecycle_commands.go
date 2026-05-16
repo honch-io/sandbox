@@ -74,15 +74,11 @@ func newStartCommand(deps Dependencies) *cobra.Command {
 					rollbackStartedSandbox(cmd.Context(), root, cfg, manager, nil)
 					return err
 				}
-				proxyPID := existingState.Proxy.PID
-				if proxyProc != nil {
-					proxyPID = proxyProc.Pid
-				}
 				state := session.State{
 					StartedAt: time.Now().UTC(),
 					Stack:     session.StackState{Running: true},
 					Runner:    existingState.Runner,
-					Proxy:     session.ProxyState{Mode: proxy.ModeOnline.String(), Port: cfg.Ports.Proxy, PID: proxyPID},
+					Proxy:     session.ProxyState{Mode: proxy.ModeOnline.String(), Port: cfg.Ports.Proxy, PID: proxySessionPID(root, cfg, existingState.Proxy, proxyProc)},
 				}
 				if err := manager.Save(state); err != nil {
 					rollbackStartedSandbox(cmd.Context(), root, cfg, manager, proxyProc)
@@ -134,6 +130,19 @@ func newStopCommand(deps Dependencies) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func proxySessionPID(root string, cfg config.Config, existing session.ProxyState, proc *os.Process) int {
+	if proc != nil {
+		return proc.Pid
+	}
+	if existing.PID > 0 {
+		return existing.PID
+	}
+	if pid, ok := readPID(proxyPIDPath(root, cfg)); ok {
+		return pid
+	}
+	return 0
 }
 
 func rollbackStartedSandbox(ctx context.Context, root string, cfg config.Config, manager session.Manager, proxyProc *os.Process) {
