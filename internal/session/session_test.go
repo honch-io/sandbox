@@ -1,7 +1,9 @@
 package session
 
 import (
+	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -32,5 +34,41 @@ func TestManagerSavesLoadsAndClearsActiveSession(t *testing.T) {
 	}
 	if _, err := manager.Load(); err == nil {
 		t.Fatal("Load succeeded after Clear")
+	}
+}
+
+func TestManagerSaveWaitsForSessionLock(t *testing.T) {
+	root := t.TempDir()
+	manager := NewManager(filepath.Join(root, "state.json"))
+	lockFile, err := os.OpenFile(filepath.Join(root, "state.json.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lockFile.Close()
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- manager.Save(State{Runner: RunnerState{Adapter: "c-core"}})
+	}()
+
+	select {
+	case err := <-done:
+		t.Fatalf("Save completed while session lock was held: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Save returned error after lock release: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Save did not complete after session lock was released")
 	}
 }
