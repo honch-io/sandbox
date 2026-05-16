@@ -119,6 +119,38 @@ func TestLeafHelpShowsUsageAndFlags(t *testing.T) {
 	}
 }
 
+func TestNestedLeafHelpStaysOnRequestedCommand(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "images list", args: []string{"sandbox", "images", "list", "--help"}, want: "honch sandbox images list"},
+		{name: "events list", args: []string{"sandbox", "events", "list", "--help"}, want: "honch sandbox events list"},
+		{name: "qemu doctor", args: []string{"sandbox", "qemu", "doctor", "--help"}, want: "honch sandbox qemu doctor"},
+		{name: "adapters list", args: []string{"sandbox", "adapters", "list", "--help"}, want: "honch sandbox adapters list"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := NewRootCommand(Dependencies{})
+			root.SetArgs(append([]string{"--plain"}, tc.args...))
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&out)
+
+			if err := root.Execute(); err != nil {
+				t.Fatalf("Execute returned error: %v", err)
+			}
+			help := ui.StripANSI(out.String())
+			if !strings.Contains(help, tc.want) {
+				t.Fatalf("nested leaf help missing %q:\n%s", tc.want, help)
+			}
+			if strings.Contains(help, "  honch sandbox\n") {
+				t.Fatalf("nested leaf help fell back to sandbox help:\n%s", help)
+			}
+		})
+	}
+}
+
 func TestUnknownNestedCommandsReturnErrors(t *testing.T) {
 	for _, args := range [][]string{
 		{"sandbox", "nope"},
