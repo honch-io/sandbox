@@ -316,6 +316,47 @@ func TestSandboxRunRejectsActiveRunner(t *testing.T) {
 	}
 }
 
+func TestSandboxRunExplainsMissingAdapter(t *testing.T) {
+	root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
+	root.SetArgs([]string{"--plain", "sandbox", "run"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("run succeeded without an adapter")
+	}
+	combined := err.Error() + "\n" + out.String()
+	for _, want := range []string{"missing adapter name", "honch sandbox run c-core --detach", "honch sandbox adapters list"} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("run error missing %q:\n%s", want, combined)
+		}
+	}
+}
+
+func TestBatteryExplainsMissingLevelBeforeSessionCheck(t *testing.T) {
+	root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
+	root.SetArgs([]string{"--plain", "sandbox", "battery"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("battery succeeded without a level")
+	}
+	combined := err.Error() + "\n" + out.String()
+	for _, want := range []string{"missing battery level", "honch sandbox battery --level <0-100>", "honch sandbox battery --level 8"} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("battery error missing %q:\n%s", want, combined)
+		}
+	}
+	if strings.Contains(combined, "session.json") {
+		t.Fatalf("battery checked session before validating level:\n%s", combined)
+	}
+}
+
 func TestLiveControlExplainsMissingSession(t *testing.T) {
 	root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
 	root.SetArgs([]string{"--plain", "sandbox", "battery", "--level", "8"})

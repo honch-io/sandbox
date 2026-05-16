@@ -300,7 +300,16 @@ func newRunCommand(deps Dependencies) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run <c-core|esp-idf> [--detach]",
 		Short: "Build and run an SDK sandbox harness",
-		Args:  cobra.ExactArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) != 1 {
+				return errors.New(ui.FormatError("missing adapter name", []ui.Row{
+					{Key: "required", Value: "honch sandbox run <adapter>"},
+					{Key: "example", Value: "honch sandbox run c-core --detach"},
+					{Key: "adapters", Value: "honch sandbox adapters list"},
+				}))
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			adapterName := args[0]
 			root, cfg, manager, err := loadRuntime(deps)
@@ -488,13 +497,23 @@ func runnerEnv(proxyPort int, token string, controlPath string) map[string]strin
 func newBatteryCommand(deps Dependencies) *cobra.Command {
 	var level int
 	cmd := liveControlCommand(deps, "battery", "Set the live harness battery level", func(w io.Writer) error {
-		if level < 0 || level > 100 {
-			return fmt.Errorf("level must be between 0 and 100")
-		}
 		return runner.SendControl(w, "battery", map[string]any{"level": level})
 	})
+	cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if level == -1 {
+			return errors.New(ui.FormatError("missing battery level", []ui.Row{
+				{Key: "required", Value: "honch sandbox battery --level <0-100>"},
+				{Key: "example", Value: "honch sandbox battery --level 8"},
+			}))
+		}
+		if level < 0 || level > 100 {
+			return errors.New(ui.FormatError("battery level must be between 0 and 100", []ui.Row{
+				{Key: "example", Value: "honch sandbox battery --level 8"},
+			}))
+		}
+		return nil
+	}
 	cmd.Flags().IntVar(&level, "level", -1, "battery level from 0 to 100")
-	_ = cmd.MarkFlagRequired("level")
 	return cmd
 }
 
