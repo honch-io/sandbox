@@ -1,0 +1,12 @@
+name: c-core
+kind: posix
+harness: harnesses/c-core
+build:
+  tool: cmake
+  output: honch_sandbox_c_core
+controls:
+  transport: newline-json
+  path: session-runner-control-fifo
+events:
+  source: real-sdk-http-cbor
+  sink: real-clickhouse

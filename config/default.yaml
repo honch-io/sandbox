@@ -1,0 +1,33 @@
+repos:
+  capture: ../capture
+  platform: ../platform
+  worker: ../worker
+ports:
+  capture: 8001
+  worker: 8080
+  clickhouse: 8123
+  proxy: 18080
+  control: 18081
+sandbox:
+  project_id: 00000000-0000-0000-0000-000000000002
+  token: honch_e2e_test_key
+  clickhouse_database: platform
+  endpoint_url: http://127.0.0.1:8001
+  state_dir: .honch-sandbox
+stack:
+  start_commands:
+    - repo: platform
+      working_dir: infra
+      args: [docker, compose, up, -d]
+    - repo: capture
+      args: [cargo, run]
+      background: true
+      log: capture.log
+    - repo: worker
+      args: [cargo, run]
+      background: true
+      log: worker.log
+  stop_commands:
+    - repo: platform
+      working_dir: infra
+      args: [docker, compose, down]
