@@ -15,6 +15,8 @@ type eventTailClient interface {
 	Tail(context.Context, config.Config, time.Time) (string, error)
 }
 
+const eventTailLookback = 30 * time.Second
+
 func newEventsCommand(deps Dependencies) *cobra.Command {
 	cmd := &cobra.Command{Use: "events", Short: "Query ClickHouse sandbox events", Args: rejectUnknownArgs, RunE: commandGroupRunE}
 	cmd.AddCommand(&cobra.Command{
@@ -41,7 +43,7 @@ func newEventsCommand(deps Dependencies) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return tailEvents(cmd.Context(), cmd.OutOrStdout(), cfg, events.Client{}, time.Now().Add(-30*time.Second), 2*time.Second)
+			return tailEvents(cmd.Context(), cmd.OutOrStdout(), cfg, events.Client{}, time.Now().Add(-eventTailLookback), 2*time.Second)
 		},
 	})
 	return cmd
@@ -53,6 +55,7 @@ func tailEvents(ctx context.Context, out io.Writer, cfg config.Config, client ev
 	}
 	nextSince := since
 	for {
+		pollStarted := time.Now().UTC()
 		result, err := client.Tail(ctx, cfg, nextSince)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -63,7 +66,7 @@ func tailEvents(ctx context.Context, out io.Writer, cfg config.Config, client ev
 		if result != "" {
 			_, _ = fmt.Fprint(out, result)
 		}
-		nextSince = time.Now().UTC()
+		nextSince = pollStarted.Add(-eventTailLookback)
 		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -40,5 +41,34 @@ func TestTailEventsPollsUntilContextCanceled(t *testing.T) {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("tail output missing %q:\n%s", want, out.String())
 		}
+	}
+}
+
+type recordingTailClient struct {
+	cancel context.CancelFunc
+	since  []time.Time
+}
+
+func (c *recordingTailClient) Tail(ctx context.Context, cfg config.Config, since time.Time) (string, error) {
+	c.since = append(c.since, since)
+	if len(c.since) == 2 {
+		c.cancel()
+	}
+	return "", nil
+}
+
+func TestTailEventsKeepsLookbackOverlapBetweenPolls(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &recordingTailClient{cancel: cancel}
+
+	err := tailEvents(ctx, io.Discard, config.Config{}, client, time.Unix(0, 0), time.Millisecond)
+	if err != nil {
+		t.Fatalf("tailEvents returned error: %v", err)
+	}
+	if len(client.since) != 2 {
+		t.Fatalf("Tail calls = %d, want 2", len(client.since))
+	}
+	if age := time.Since(client.since[1]); age < eventTailLookback/2 {
+		t.Fatalf("second tail cursor used too little lookback: age %s, want at least %s", age, eventTailLookback/2)
 	}
 }
