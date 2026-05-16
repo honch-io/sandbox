@@ -357,6 +357,57 @@ func TestSandboxStartRollsBackStackWhenProxyStartupFails(t *testing.T) {
 	}
 }
 
+func TestSandboxStartRollsBackStackWhenServiceStartFails(t *testing.T) {
+	rootDir := t.TempDir()
+	serviceDir := filepath.Join(rootDir, "service")
+	if err := os.MkdirAll(serviceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	startedPath := filepath.Join(rootDir, "started.txt")
+	stoppedPath := filepath.Join(rootDir, "stopped.txt")
+	configBody := strings.Join([]string{
+		"repos:",
+		"  capture: service",
+		"  platform: ''",
+		"  worker: ''",
+		"sandbox:",
+		"  state_dir: .state",
+		"  project_id: ''",
+		"  token: ''",
+		"stack:",
+		"  start_commands:",
+		"    - repo: capture",
+		"      args: [sh, -c, 'touch " + startedPath + " && exit 17']",
+		"  stop_commands:",
+		"    - repo: capture",
+		"      args: [sh, -c, 'touch " + stoppedPath + "']",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(rootDir, ".honch-sandbox.yaml"), []byte(configBody), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "start", "--skip-migrations"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("start succeeded even though the stack start command failed")
+	}
+	if _, err := os.Stat(startedPath); err != nil {
+		t.Fatalf("start command did not run before failure: %v", err)
+	}
+	if _, err := os.Stat(stoppedPath); err != nil {
+		t.Fatalf("service start failure did not roll back the stack: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(rootDir, ".state", "session.json")); !os.IsNotExist(err) {
+		t.Fatalf("failed start left session state behind, stat err: %v", err)
+	}
+}
+
 func TestSandboxStartHelpShowsMigrationFlags(t *testing.T) {
 	root := NewRootCommand(Dependencies{})
 	root.SetArgs([]string{"--plain", "sandbox", "start", "--help"})

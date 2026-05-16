@@ -66,6 +66,7 @@ func newStartCommand(deps Dependencies) *cobra.Command {
 			}
 			if err := ui.WithSpinnerDone(cmd.Context(), cmd.ErrOrStderr(), "starting sandbox", "sandbox has been started", func() error {
 				if err := service.Start(cmd.Context(), cfg); err != nil {
+					rollbackStartedSandbox(cmd.Context(), root, cfg, manager, nil)
 					return err
 				}
 				proxyProc, err := startProxyProcess(root, cfg)
