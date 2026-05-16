@@ -197,7 +197,7 @@ func newStopCommand(deps Dependencies) *cobra.Command {
 				return err
 			}
 			state, err := manager.Load()
-			if err != nil || !state.Stack.Running {
+			if err != nil || !sandboxHasActiveProcesses(state) {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Success("sandbox is not running"))
 				return nil
 			}
@@ -209,8 +209,10 @@ func newStopCommand(deps Dependencies) *cobra.Command {
 				_ = killProcess(state.Runner.PID)
 			}
 			_ = killSandboxRunnerProcesses(root, cfg)
-			if err := stack.New(root).Stop(cmd.Context(), cfg); err != nil {
-				return err
+			if state.Stack.Running {
+				if err := stack.New(root).Stop(cmd.Context(), cfg); err != nil {
+					return err
+				}
 			}
 			if err := manager.Clear(); err != nil {
 				return err
@@ -219,6 +221,10 @@ func newStopCommand(deps Dependencies) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func sandboxHasActiveProcesses(state session.State) bool {
+	return state.Stack.Running || state.Runner.Adapter != "" || state.Runner.PID > 0 || state.Proxy.PID > 0
 }
 
 func newStatusCommand(deps Dependencies) *cobra.Command {

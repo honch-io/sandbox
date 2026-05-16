@@ -256,6 +256,29 @@ func TestSandboxStopIsNoopWhenNotRunning(t *testing.T) {
 	}
 }
 
+func TestSandboxStopClearsRunnerOnlySession(t *testing.T) {
+	rootDir := t.TempDir()
+	manager := session.NewManager(filepath.Join(rootDir, ".honch-sandbox", "session.json"))
+	if err := manager.Save(session.State{Runner: session.RunnerState{Adapter: "c-core"}}); err != nil {
+		t.Fatal(err)
+	}
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "stop"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("stop returned error: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "sandbox has been stopped") {
+		t.Fatalf("stop did not report stopped sandbox:\n%s", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(rootDir, ".honch-sandbox", "session.json")); !os.IsNotExist(err) {
+		t.Fatalf("stop did not clear runner-only session, stat err: %v", err)
+	}
+}
+
 func TestSandboxStartRejectsConflictingMigrationFlags(t *testing.T) {
 	root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
 	root.SetArgs([]string{"--plain", "sandbox", "start", "--migrate", "--skip-migrations"})
