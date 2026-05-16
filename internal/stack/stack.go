@@ -234,7 +234,6 @@ func (s Service) backgroundAlreadyRunning(ctx context.Context, cfg config.Config
 }
 
 func (s Service) waitForBackgroundPorts(ctx context.Context, cfg config.Config, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
 	for _, check := range []struct {
 		name string
 		port int
@@ -245,6 +244,7 @@ func (s Service) waitForBackgroundPorts(ctx context.Context, cfg config.Config, 
 		if check.port <= 0 {
 			continue
 		}
+		deadline := time.Now().Add(timeout)
 		for {
 			if portOpen(ctx, check.port, 250*time.Millisecond) {
 				break

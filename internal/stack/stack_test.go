@@ -211,3 +211,70 @@ func TestStartRejectsOccupiedServicePortWithStaleLivePID(t *testing.T) {
 		t.Fatalf("error did not explain occupied port ownership: %v", err)
 	}
 }
+
+func TestWaitForBackgroundPortsAppliesTimeoutPerService(t *testing.T) {
+	capturePort := freeTCPPort(t)
+	workerPort := freeTCPPort(t)
+	stopCapture := startDelayedTCPListener(t, capturePort, 500*time.Millisecond)
+	defer stopCapture()
+	stopWorker := startDelayedTCPListener(t, workerPort, 900*time.Millisecond)
+	defer stopWorker()
+
+	cfg := config.Config{
+		Ports: config.PortsConfig{
+			Capture: capturePort,
+			Worker:  workerPort,
+		},
+	}
+
+	if err := New(t.TempDir()).waitForBackgroundPorts(context.Background(), cfg, 700*time.Millisecond); err != nil {
+		t.Fatalf("waitForBackgroundPorts returned error: %v", err)
+	}
+}
+
+func freeTCPPort(t *testing.T) int {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	return listener.Addr().(*net.TCPAddr).Port
+}
+
+func startDelayedTCPListener(t *testing.T, port int, delay time.Duration) func() {
+	t.Helper()
+	closed := make(chan struct{})
+	ready := make(chan net.Listener, 1)
+	go func() {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-closed:
+			return
+		}
+		listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			t.Errorf("listen on delayed port %d: %v", port, err)
+			return
+		}
+		ready <- listener
+		defer listener.Close()
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+	return func() {
+		close(closed)
+		select {
+		case listener := <-ready:
+			_ = listener.Close()
+		default:
+		}
+	}
+}
