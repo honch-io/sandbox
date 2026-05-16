@@ -33,3 +33,18 @@ func TestPrintLogsHonorsTailOptionAndShowsPath(t *testing.T) {
 		}
 	}
 }
+
+func TestTailFileReturnsLastLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "device.log")
+	if err := os.WriteFile(path, []byte("one\ntwo\nthree\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	text, err := tailFile(path, 2)
+	if err != nil {
+		t.Fatalf("tailFile returned error: %v", err)
+	}
+	if text != "two\nthree\n" {
+		t.Fatalf("tailFile = %q", text)
+	}
+}

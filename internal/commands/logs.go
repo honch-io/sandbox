@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -34,8 +35,7 @@ func printLogs(out io.Writer, root string, cfg config.Config, target string, opt
 	}
 	for _, file := range files {
 		path := filepath.Join(logDir, file)
-		data, err := os.ReadFile(path)
-		if err != nil {
+		if _, err := os.Stat(path); err != nil {
 			if os.IsNotExist(err) {
 				_, _ = fmt.Fprintf(out, "%s: no logs yet\n", file)
 				continue
@@ -46,24 +46,58 @@ func printLogs(out io.Writer, root string, cfg config.Config, target string, opt
 		if tail <= 0 {
 			tail = 80
 		}
+		text, err := tailFile(path, tail)
+		if err != nil {
+			return err
+		}
 		_, _ = fmt.Fprintf(out, "\n%s\n", ui.Heading(file))
 		_, _ = fmt.Fprintf(out, "path: %s\n", path)
 		_, _ = fmt.Fprintf(out, "showing last %d lines\n\n", tail)
-		_, _ = fmt.Fprint(out, tailString(string(data), tail))
-		if len(data) > 0 && data[len(data)-1] != '\n' {
+		_, _ = fmt.Fprint(out, text)
+		if len(text) > 0 && text[len(text)-1] != '\n' {
 			_, _ = fmt.Fprintln(out)
 		}
 	}
 	return nil
 }
 
-func tailString(text string, maxLines int) string {
-	lines := strings.SplitAfter(text, "\n")
-	if len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
+func tailFile(path string, maxLines int) (string, error) {
+	if maxLines <= 0 {
+		maxLines = 80
 	}
-	if len(lines) > maxLines {
-		lines = lines[len(lines)-maxLines:]
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
 	}
-	return strings.Join(lines, "")
+	defer file.Close()
+	reader := bufio.NewReader(file)
+	lines := make([]string, maxLines)
+	count := 0
+	for {
+		line, readErr := reader.ReadString('\n')
+		if line != "" {
+			lines[count%maxLines] = line
+			count++
+		}
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				break
+			}
+			return "", readErr
+		}
+	}
+	if count == 0 {
+		return "", nil
+	}
+	kept := count
+	start := 0
+	if count > maxLines {
+		kept = maxLines
+		start = count % maxLines
+	}
+	var result strings.Builder
+	for i := 0; i < kept; i++ {
+		result.WriteString(lines[(start+i)%maxLines])
+	}
+	return result.String(), nil
 }
