@@ -419,6 +419,10 @@ customer SDK release archives for `c-core`, `esp-idf`, or `micropython`.
 Keep sandbox harnesses, fake devices, orchestration code, and sandbox configs in
 `tools/sandbox`, not inside customer SDK package paths.
 
+See `adapters/README.md` for the current adapter schema and the expected future
+MicroPython adapter direction. Do not add a new adapter name to the registry
+until it has a real harness and an E2E verification path.
+
 ## Scope
 
 Included:
