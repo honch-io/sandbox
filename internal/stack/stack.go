@@ -34,6 +34,11 @@ func (s Service) Start(ctx context.Context, cfg config.Config) error {
 	if err := s.runCommands(ctx, cfg, foreground); err != nil {
 		return err
 	}
+	if runMigrations || sandboxProjectConfigured(cfg) {
+		if err := s.waitForPostgresReady(ctx, 30*time.Second); err != nil {
+			return err
+		}
+	}
 	if runMigrations {
 		if err := s.applyPlatformMigrations(ctx, cfg); err != nil {
 			return err
@@ -431,10 +436,34 @@ func (s Service) applyPostgresPrerequisites(ctx context.Context) error {
 }
 
 func (s Service) seedSandboxProject(ctx context.Context, cfg config.Config) error {
-	if cfg.Sandbox.ProjectID == "" || cfg.Sandbox.Token == "" {
+	if !sandboxProjectConfigured(cfg) {
 		return nil
 	}
 	return run(ctx, s.Root, "docker", "exec", "-i", "infra-postgres-1", "psql", "-U", "platform", "-d", "platform", "-c", SandboxSeedSQL(cfg))
+}
+
+func sandboxProjectConfigured(cfg config.Config) bool {
+	return cfg.Sandbox.ProjectID != "" && cfg.Sandbox.Token != ""
+}
+
+func (s Service) waitForPostgresReady(ctx context.Context, timeout time.Duration) error {
+	if _, err := exec.LookPath("docker"); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		if err := run(ctx, s.Root, "docker", "exec", "-i", "infra-postgres-1", "pg_isready", "-U", "platform", "-d", "platform"); err == nil {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("postgres did not become ready within %s", timeout)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
 }
 
 func SandboxSeedSQL(cfg config.Config) string {

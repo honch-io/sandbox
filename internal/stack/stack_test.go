@@ -66,6 +66,76 @@ func TestStartRunsBackgroundCommandsFromConfiguredSubdirectory(t *testing.T) {
 	}
 }
 
+func TestStartWaitsForPostgresReadinessBeforeMigrationsAndSeed(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "platform")
+	if err := os.MkdirAll(filepath.Join(repo, "backend"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(root, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(root, "docker.log")
+	readyPath := filepath.Join(root, "postgres.ready")
+	docker := filepath.Join(binDir, "docker")
+	dockerScript := "#!/bin/sh\n" +
+		"echo \"$*\" >> " + logPath + "\n" +
+		"if [ \"$1\" = exec ] && [ \"$3\" = infra-postgres-1 ] && [ \"$4\" = pg_isready ]; then\n" +
+		"  if [ ! -f " + readyPath + " ]; then exit 1; fi\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"if [ \"$1\" = exec ] && [ \"$3\" = infra-postgres-1 ] && [ \"$4\" = psql ]; then\n" +
+		"  if [ ! -f " + readyPath + " ]; then\n" +
+		"    echo psql-before-ready >&2\n" +
+		"    exit 1\n" +
+		"  fi\n" +
+		"  exit 0\n" +
+		"fi\n" +
+		"exit 0\n"
+	if err := os.WriteFile(docker, []byte(dockerScript), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	bun := filepath.Join(binDir, "bun")
+	if err := os.WriteFile(bun, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		_ = os.WriteFile(readyPath, []byte("ready"), 0o600)
+	}()
+
+	cfg := config.Config{
+		Repos:   config.ReposConfig{Platform: "platform"},
+		Sandbox: config.SandboxConfig{StateDir: ".state", ProjectID: "11111111-1111-1111-1111-111111111111", Token: "sandbox-token"},
+		Stack: config.StackConfig{
+			StartCommands: nil,
+		},
+	}
+	service := New(root)
+	service.ApproveMigrations = func() (bool, error) {
+		return true, nil
+	}
+
+	if err := service.Start(context.Background(), cfg); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := string(logData)
+	firstReady := strings.Index(log, "pg_isready")
+	firstSeed := strings.Index(log, "psql -U platform -d platform -c")
+	if firstReady == -1 || firstSeed == -1 {
+		t.Fatalf("missing readiness or seed commands:\n%s", log)
+	}
+	if firstSeed < firstReady {
+		t.Fatalf("database seed ran before readiness probe:\n%s", log)
+	}
+}
+
 func TestStartBackgroundCommandReleasesProcessAfterPIDWrite(t *testing.T) {
 	cmd := exec.Command("sh", "-c", "exit 0")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
