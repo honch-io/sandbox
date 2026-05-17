@@ -61,6 +61,14 @@ func TestStartReturnsBeforeProcessExits(t *testing.T) {
 	}
 }
 
+func TestQEMUSerialArgUsesConfiguredHostAndPort(t *testing.T) {
+	t.Setenv("HONCH_SANDBOX_QEMU_SERIAL_ADDR", "127.0.0.1:6200")
+
+	if got := qemuSerialArg(); got != "tcp:127.0.0.1:6200,server,nowait" {
+		t.Fatalf("qemuSerialArg = %q, want tcp:127.0.0.1:6200,server,nowait", got)
+	}
+}
+
 func TestEspIDFRunnerBuildUsesIDFPyWithStateBuildDirAndSandboxDefines(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake idf.py script is POSIX-only")
@@ -235,7 +243,7 @@ func TestEspIDFRunnerRunStartsQEMUAndConnectsSerial(t *testing.T) {
 		"python|" + build.BuildDir + "|-m esptool --chip=esp32 merge-bin --output=" + filepath.Join(build.BuildDir, "qemu_flash.bin") + " --pad-to-size=2MB @flash_args",
 		"qemu|",
 		"|-M esp32 -m 4M",
-		"-serial tcp::",
+		"-serial tcp:127.0.0.1:5555,server,nowait",
 		"-nic user,model=open_eth",
 	} {
 		if !strings.Contains(log, want) {
@@ -274,7 +282,7 @@ func TestEspIDFRunnerRunUsesConfiguredAdapterSettings(t *testing.T) {
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("HONCH_SANDBOX_QEMU_SERIAL_ADDR", "127.0.0.1:5555")
-	stubQEMUSerial(t, []string{"ready\n"}, 500*time.Millisecond)
+	stubQEMUSerial(t, []string{"ready\n"}, 3*time.Second)
 
 	r := EspIDFRunner{
 		RepoRoot:        repoRoot,

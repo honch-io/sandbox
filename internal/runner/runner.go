@@ -306,11 +306,18 @@ func qemuSerialAddr() string {
 
 func qemuSerialArg() string {
 	address := qemuSerialAddr()
-	_, port, ok := strings.Cut(address, ":")
-	if !ok || port == "" {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil || port == "" {
 		port = "5555"
+		host = ""
 	}
-	return "tcp::" + port + ",server,nowait"
+	if host == "" {
+		return "tcp::" + port + ",server,nowait"
+	}
+	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = "[" + host + "]"
+	}
+	return "tcp:" + host + ":" + port + ",server,nowait"
 }
 
 func (r EspIDFRunner) runExported(ctx context.Context, dir string, name string, args ...string) error {
