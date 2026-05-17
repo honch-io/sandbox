@@ -17,7 +17,7 @@ Each adapter entry describes:
 
 - `name`: public CLI identifier
 - `kind`: runner implementation to use
-- `harness`: developer-only harness path under `tools/sandbox`
+- `harness`: developer-only harness path under `harnesses`
 - `build`: how to produce the harness artifact
 - `run`: how to launch the artifact
 - `emulator`: only for adapters that need one
@@ -52,7 +52,7 @@ events:
 
 Before an adapter appears in the registry, it should have:
 
-1. A real harness under `tools/sandbox/harnesses/**`
+1. A real harness under `harnesses/**`
 2. A concrete build path
 3. A concrete run path
 4. A documented control transport
@@ -64,7 +64,7 @@ only become visible when there is a real E2E verification route behind it.
 
 ## Notes
 
-- Harnesses must stay in `tools/sandbox`, not customer SDK package paths.
+- Harnesses must stay in this repo under `harnesses/`, not customer SDK package paths.
 - `c-core` is the fast POSIX smoke-test adapter.
 - `esp-idf` runs as firmware under QEMU.
 - Keep future adapters behind the same `sandbox run <adapter>` contract and

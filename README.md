@@ -16,7 +16,6 @@ SDK harness -> local proxy -> capture -> worker -> ClickHouse
 ## Quick Start
 
 ```sh
-cd tools/sandbox
 go build -o honch ./cmd/honch
 
 ./honch sandbox doctor
@@ -122,7 +121,7 @@ locally.
 
 ## Harnesses
 
-Harnesses are developer-only and live under `tools/sandbox/harnesses`.
+Harnesses are developer-only and live under `harnesses/`.
 
 The current adapters are:
 
@@ -134,14 +133,14 @@ app code when you want to exercise SDK behavior. Leave the plumbing alone unless
 you are changing how the CLI talks to the harness.
 
 ```text
-tools/sandbox/harnesses/c-core/
+harnesses/c-core/
   app.c              # customer-like C/POSIX SDK integration under test
   app.h
   main.c             # entrypoint wiring env/config and control
   sandbox_control.c  # CLI JSON/FIFO control plumbing
   sandbox_control.h
 
-tools/sandbox/harnesses/esp-idf/main/
+harnesses/esp-idf/main/
   app.c              # customer-like ESP-IDF SDK integration under test
   app.h
   app_main.c         # firmware entrypoint
@@ -154,7 +153,6 @@ tools/sandbox/harnesses/esp-idf/main/
 Typical contributor loop:
 
 ```sh
-cd tools/sandbox
 go build -o honch ./cmd/honch
 
 $EDITOR harnesses/c-core/app.c
@@ -171,12 +169,11 @@ $EDITOR harnesses/esp-idf/main/app.c
 ## ESP-IDF QEMU
 
 Use this path when changing the ESP-IDF SDK or shared embedded behavior. It
-builds the firmware from `tools/sandbox/harnesses/esp-idf`, links the local
+builds the firmware from `harnesses/esp-idf`, links the local
 `esp-idf/honch` component, boots it in QEMU, and drives the firmware over UART
 with the same JSON control commands.
 
 ```sh
-cd tools/sandbox
 go build -o honch ./cmd/honch
 
 ./honch sandbox qemu doctor

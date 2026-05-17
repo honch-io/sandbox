@@ -29,7 +29,7 @@ func (r CCoreRunner) Build(ctx context.Context) (string, error) {
 	if harnessDir == "" {
 		harnessDir = "harnesses/c-core"
 	}
-	sourceDir := filepath.Join(r.RepoRoot, "tools", "sandbox", harnessDir)
+	sourceDir := filepath.Join(r.RepoRoot, harnessDir)
 	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		return "", err
 	}
@@ -82,7 +82,7 @@ func (r EspIDFRunner) Build(ctx context.Context, settings EspIDFSettings) (EspID
 		harnessDir = "harnesses/esp-idf"
 	}
 	build := EspIDFBuild{
-		ProjectDir: filepath.Join(r.RepoRoot, "tools", "sandbox", harnessDir),
+		ProjectDir: filepath.Join(r.RepoRoot, harnessDir),
 		BuildDir:   filepath.Join(r.StateDir, "build", "esp-idf"),
 	}
 	// The ESP-IDF sandbox build directory is fully managed by this runner. A

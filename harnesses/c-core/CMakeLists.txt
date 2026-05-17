@@ -8,7 +8,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 set(HONCH_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(HONCH_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-add_subdirectory(../../../../c-core c-core-sdk)
+add_subdirectory(../../../SDK/c-core c-core-sdk)
 
 add_executable(honch_sandbox_c_core
     app.c

@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -43,7 +44,7 @@ func newSetupCommand(deps Dependencies) *cobra.Command {
 					return fmt.Errorf("setup cancelled")
 				}
 			}
-			return runSetupActions(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), actions)
+			return runSetupActions(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), actions)
 		},
 	}
 	cmd.Flags().BoolVar(&yes, "yes", false, "run supported setup actions without confirmation")
@@ -55,7 +56,7 @@ type setupAction struct {
 	Name    string
 	Summary string
 	Command string
-	Run     func(context.Context, io.Writer, io.Writer) error
+	Run     func(context.Context, io.Reader, io.Writer, io.Writer) error
 }
 
 func setupActions(root string, cfg config.Config) []setupAction {
@@ -82,8 +83,8 @@ func setupDockerImagesAction(cfg config.Config) setupAction {
 		Name:    "images",
 		Summary: "pull required Docker images",
 		Command: "honch sandbox images pull",
-		Run: func(ctx context.Context, stdout io.Writer, stderr io.Writer) error {
-			return pullDockerImages(ctx, stdout, stderr, cfg.Stack.Images)
+		Run: func(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
+			return pullDockerImages(ctx, stdin, stdout, stderr, cfg.Stack.Images)
 		},
 	}
 }
@@ -94,7 +95,7 @@ func setupQEMUAction(root string, cfg config.Config) setupAction {
 		Name:    "qemu",
 		Summary: "install ESP-IDF QEMU tools",
 		Command: "honch sandbox qemu install",
-		Run: func(ctx context.Context, stdout io.Writer, stderr io.Writer) error {
+		Run: func(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
 			return runQEMUInstallPlan(ctx, stdout, stderr, plan)
 		},
 	}
@@ -118,7 +119,7 @@ func setupShellAction(name string, summary string, command string) setupAction {
 		Name:    name,
 		Summary: summary,
 		Command: command,
-		Run: func(ctx context.Context, stdout io.Writer, stderr io.Writer) error {
+		Run: func(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
 			return runShellCommand(ctx, stdout, stderr, command)
 		},
 	}
@@ -176,14 +177,14 @@ func printSetupDryRun(out io.Writer, actions []setupAction) {
 	}
 }
 
-func runSetupActions(ctx context.Context, stdout io.Writer, stderr io.Writer, actions []setupAction) error {
+func runSetupActions(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer, actions []setupAction) error {
 	for _, action := range actions {
 		if action.Run == nil {
-			return fmt.Errorf(ui.FormatError("manual setup required", []ui.Row{
+			return errors.New(ui.FormatError("manual setup required", []ui.Row{
 				{Key: action.Name, Value: action.Command},
 			}))
 		}
-		if err := action.Run(ctx, stdout, stderr); err != nil {
+		if err := action.Run(ctx, stdin, stdout, stderr); err != nil {
 			return fmt.Errorf("%s setup: %w", action.Name, err)
 		}
 	}

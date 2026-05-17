@@ -17,7 +17,7 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 
 func writeAdapterRegistryForTest(t *testing.T, root string) {
 	t.Helper()
-	dir := filepath.Join(root, "tools", "sandbox", "adapters")
+	dir := filepath.Join(root, "adapters")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}

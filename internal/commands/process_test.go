@@ -3,11 +3,13 @@ package commands
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -72,6 +74,112 @@ func TestProxySessionPIDFallsBackToPIDFile(t *testing.T) {
 	pid := proxySessionPID(root, cfg, session.ProxyState{}, nil)
 	if pid != 12345 {
 		t.Fatalf("proxySessionPID = %d, want pid file value", pid)
+	}
+}
+
+func TestResolveProxyPortConflictPromptsAndStopsListeningProcess(t *testing.T) {
+	root := t.TempDir()
+	cfg := configForTest()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	cfg.Ports.Proxy = listener.Addr().(*net.TCPAddr).Port
+
+	prevLookup := lookupListeningProcess
+	prevConfirm := confirmProxyPortReuse
+	prevShouldConfirm := shouldConfirmProxyPortReuse
+	prevStop := stopProxyProcess
+	prevWait := waitForProxyPortClose
+	lookupListeningProcess = func(port int) (listeningProcessInfo, bool) {
+		return listeningProcessInfo{
+			PID:     os.Getpid(),
+			Command: "honch sandbox proxy-serve",
+			Cwd:     root,
+		}, true
+	}
+	confirmProxyPortReuse = func(stdin io.Reader, out io.Writer, prompt string) (bool, error) {
+		if !strings.Contains(prompt, "Stop it and continue starting the sandbox?") {
+			t.Fatalf("prompt missing expected warning:\n%s", prompt)
+		}
+		if !strings.Contains(prompt, "pid:") || !strings.Contains(prompt, "cwd:") {
+			t.Fatalf("prompt missing process details:\n%s", prompt)
+		}
+		return true, nil
+	}
+	shouldConfirmProxyPortReuse = func(stdin io.Reader, stderr io.Writer) bool { return true }
+	var stoppedPID int
+	stopProxyProcess = func(pid int) error {
+		stoppedPID = pid
+		return nil
+	}
+	waitForProxyPortClose = func(ctx context.Context, port int, timeout time.Duration) error {
+		return nil
+	}
+	t.Cleanup(func() {
+		lookupListeningProcess = prevLookup
+		confirmProxyPortReuse = prevConfirm
+		shouldConfirmProxyPortReuse = prevShouldConfirm
+		stopProxyProcess = prevStop
+		waitForProxyPortClose = prevWait
+	})
+
+	if err := resolveProxyPortConflict(context.Background(), strings.NewReader(""), io.Discard, root, cfg); err != nil {
+		t.Fatalf("resolveProxyPortConflict returned error: %v", err)
+	}
+	if stoppedPID != os.Getpid() {
+		t.Fatalf("stopped PID = %d, want %d", stoppedPID, os.Getpid())
+	}
+}
+
+func TestResolveProxyPortConflictDeclineCancelsStart(t *testing.T) {
+	root := t.TempDir()
+	cfg := configForTest()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	cfg.Ports.Proxy = listener.Addr().(*net.TCPAddr).Port
+
+	prevLookup := lookupListeningProcess
+	prevConfirm := confirmProxyPortReuse
+	prevShouldConfirm := shouldConfirmProxyPortReuse
+	prevStop := stopProxyProcess
+	prevWait := waitForProxyPortClose
+	lookupListeningProcess = func(port int) (listeningProcessInfo, bool) {
+		return listeningProcessInfo{PID: os.Getpid(), Command: "honch sandbox proxy-serve", Cwd: root}, true
+	}
+	confirmProxyPortReuse = func(stdin io.Reader, out io.Writer, prompt string) (bool, error) {
+		return false, nil
+	}
+	shouldConfirmProxyPortReuse = func(stdin io.Reader, stderr io.Writer) bool { return true }
+	var stopped bool
+	stopProxyProcess = func(pid int) error {
+		stopped = true
+		return nil
+	}
+	waitForProxyPortClose = func(ctx context.Context, port int, timeout time.Duration) error {
+		return nil
+	}
+	t.Cleanup(func() {
+		lookupListeningProcess = prevLookup
+		confirmProxyPortReuse = prevConfirm
+		shouldConfirmProxyPortReuse = prevShouldConfirm
+		stopProxyProcess = prevStop
+		waitForProxyPortClose = prevWait
+	})
+
+	err = resolveProxyPortConflict(context.Background(), strings.NewReader(""), io.Discard, root, cfg)
+	if err == nil {
+		t.Fatal("resolveProxyPortConflict succeeded after decline")
+	}
+	if !strings.Contains(err.Error(), "start cancelled") {
+		t.Fatalf("decline error did not report cancellation: %v", err)
+	}
+	if stopped {
+		t.Fatal("decline path stopped a process")
 	}
 }
 

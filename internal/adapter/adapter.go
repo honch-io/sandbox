@@ -52,7 +52,7 @@ type Registry struct {
 }
 
 func LoadRegistry(root string) (Registry, error) {
-	dir := filepath.Join(root, "tools", "sandbox", "adapters")
+	dir := filepath.Join(root, "adapters")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return Registry{}, fmt.Errorf("read adapters: %w", err)

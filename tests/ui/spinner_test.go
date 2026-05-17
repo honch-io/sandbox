@@ -14,7 +14,7 @@ func TestWithSpinnerPlainPrintsStartAndDone(t *testing.T) {
 	t.Cleanup(func() { ui.SetPlain(false) })
 	var out bytes.Buffer
 
-	err := ui.WithSpinner(context.Background(), &out, "building harness", func() error {
+	err := ui.WithSpinner(context.Background(), bytes.NewBuffer(nil), &out, "building harness", func(context.Context) error {
 		return nil
 	})
 	if err != nil {

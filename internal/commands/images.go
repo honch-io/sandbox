@@ -19,6 +19,11 @@ const (
 	dockerImagePullTimeout    = 10 * time.Minute
 )
 
+var confirmImagePull = ui.PromptConfirm
+var shouldConfirmImagePull = func(stdin io.Reader, stderr io.Writer) bool {
+	return ui.IsInteractive(stdin, stderr) && !ui.IsPlain()
+}
+
 func newImagesCommand(deps Dependencies) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "images",
@@ -49,7 +54,7 @@ func newImagesCommand(deps Dependencies) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return pullDockerImages(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg.Stack.Images)
+				return pullDockerImages(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg.Stack.Images)
 			},
 		},
 	)
@@ -94,31 +99,43 @@ func dockerImageStatus(ctx context.Context, image string) string {
 	return "present"
 }
 
-func pullDockerImages(ctx context.Context, stdout io.Writer, stderr io.Writer, images []string) error {
+func pullDockerImages(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer, images []string) error {
 	for _, image := range uniqueDockerImages(images) {
-		if err := pullDockerImage(ctx, stdout, stderr, image); err != nil {
+		if err := pullDockerImage(ctx, stdin, stdout, stderr, image); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func pullDockerImage(ctx context.Context, stdout io.Writer, stderr io.Writer, image string) error {
+func pullDockerImage(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer, image string) error {
 	image = strings.TrimSpace(image)
 	if image == "" {
 		return nil
 	}
-	return ui.WithSpinnerDone(ctx, stderr, "pulling "+image, "pulled "+image, func() error {
+	if dockerImageStatus(ctx, image) == "present" && shouldConfirmImagePull(stdin, stderr) {
+		ok, err := confirmImagePull(stdin, stderr, "You already have "+image+" locally. Pull anyway? [y/N] ")
+		if err != nil {
+			return err
+		}
+		if !ok {
+			_, _ = fmt.Fprintf(stderr, "skipping %s\n", image)
+			return nil
+		}
+	}
+	return ui.WithSpinnerDone(ctx, stdin, stderr, "pulling "+image, "pulled "+image, func(ctx context.Context) error {
 		pullCtx, cancel := context.WithTimeout(ctx, dockerImagePullTimeout)
 		defer cancel()
 		cmd := exec.CommandContext(pullCtx, "docker", "pull", image)
-		cmd.Stdout = stdout
-		cmd.Stderr = stderr
-		if err := cmd.Run(); err != nil {
+		out, err := cmd.CombinedOutput()
+		if err != nil {
 			if errors.Is(pullCtx.Err(), context.DeadlineExceeded) {
 				return fmt.Errorf("docker pull timed out for %s", image)
 			}
-			return err
+			if len(out) > 0 {
+				return fmt.Errorf("docker pull failed for %s: %w\n%s", image, err, strings.TrimSpace(string(out)))
+			}
+			return fmt.Errorf("docker pull failed for %s: %w", image, err)
 		}
 		return nil
 	})

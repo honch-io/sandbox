@@ -88,7 +88,7 @@ func TestLoadRejectsInvalidOverride(t *testing.T) {
 
 func TestLoadReadsBundledDefaultConfigBeforeRootOverride(t *testing.T) {
 	root := t.TempDir()
-	defaultDir := filepath.Join(root, "tools", "sandbox", "config")
+	defaultDir := filepath.Join(root, "config")
 	if err := os.MkdirAll(defaultDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

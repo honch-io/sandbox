@@ -42,16 +42,16 @@ honch-io/
 
 ## Release Boundary
 
-Everything under `tools/sandbox/**` is developer tooling. It must not be
-shipped inside customer SDK packages or embedded SDK release artifacts.
+Everything in this repo is developer tooling. It must not be shipped inside
+customer SDK packages or embedded SDK release artifacts.
 
-Sandbox harnesses may live under `tools/sandbox/harnesses/**` and may link
-against local SDK code. They should not be moved into customer package paths
-just to support the CLI.
+Sandbox harnesses live under `harnesses/**` and may link against local SDK
+code. They should not be moved into customer package paths just to support the
+CLI.
 
 ## Adapter Safety
 
-Adapter configs live under `tools/sandbox/adapters/**`. Adding a config file
+Adapter configs live under `adapters/**`. Adding a config file
 should not by itself create hidden installation side effects. Installer logic
 must remain explicit in command code and must have tests covering confirmation
 or dry-run behavior.

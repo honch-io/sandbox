@@ -59,7 +59,7 @@ func Load(root string) (Config, error) {
 	v := viper.New()
 	setDefaults(v)
 
-	v.SetConfigFile(filepath.Join(root, "tools", "sandbox", "config", "default.yaml"))
+	v.SetConfigFile(filepath.Join(root, "config", "default.yaml"))
 	if err := v.MergeInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !errors.As(err, &notFound) && !os.IsNotExist(err) {

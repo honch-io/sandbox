@@ -2,13 +2,17 @@ package commands
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/honch/sdk/tools/sandbox/internal/config"
 	"github.com/honch/sdk/tools/sandbox/internal/events"
+	"github.com/honch/sdk/tools/sandbox/internal/session"
+	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -43,19 +47,30 @@ func newEventsCommand(deps Dependencies) *cobra.Command {
 		Use:   "tail",
 		Short: "Poll ClickHouse for newly ingested events",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, cfg, _, err := loadRuntime(deps)
+			_, cfg, manager, err := loadRuntime(deps)
 			if err != nil {
 				return err
 			}
-			return tailEvents(cmd.Context(), cmd.OutOrStdout(), cfg, events.Client{}, time.Now().Add(-eventTailLookback), 2*time.Second)
+			return tailEvents(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cfg, events.Client{}, eventTailSince(manager), 2*time.Second)
 		},
 	})
 	return cmd
 }
 
-func tailEvents(ctx context.Context, out io.Writer, cfg config.Config, client eventTailClient, since time.Time, interval time.Duration) error {
+func eventTailSince(manager session.Manager) time.Time {
+	state, err := manager.Load()
+	if err == nil && !state.StartedAt.IsZero() {
+		return state.StartedAt
+	}
+	return time.Now().Add(-eventTailLookback)
+}
+
+func tailEvents(ctx context.Context, in io.Reader, out io.Writer, cfg config.Config, client eventTailClient, since time.Time, interval time.Duration) error {
 	if interval <= 0 {
 		interval = 2 * time.Second
+	}
+	if ui.IsInteractive(in, out) && !ui.IsPlain() {
+		return tailEventsInteractive(ctx, in, out, cfg, client, since, interval)
 	}
 	nextSince := since
 	seen := newTailSeen(eventTailSeenLimit)
@@ -81,6 +96,62 @@ func tailEvents(ctx context.Context, out io.Writer, cfg config.Config, client ev
 			return nil
 		case <-timer.C:
 		}
+	}
+}
+
+func tailEventsInteractive(ctx context.Context, in io.Reader, out io.Writer, cfg config.Config, client eventTailClient, since time.Time, interval time.Duration) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	model := ui.NewTextViewerModel("Honch sandbox events tail", "waiting for events...\n", ui.ViewerFooter())
+	program := tea.NewProgram(model, tea.WithInput(in), tea.WithOutput(out), tea.WithAltScreen(), tea.WithContext(ctx))
+	errCh := make(chan error, 1)
+	go func() {
+		nextSince := since
+		seen := newTailSeen(eventTailSeenLimit)
+		for {
+			pollStarted := time.Now().UTC()
+			result, err := client.Tail(ctx, cfg, nextSince)
+			if err != nil {
+				if ctx.Err() == nil {
+					errCh <- err
+					cancel()
+				}
+				return
+			}
+			if result != "" {
+				var b strings.Builder
+				if _, writeErr := writeUnseenTailRows(&b, result, seen); writeErr != nil {
+					errCh <- writeErr
+					cancel()
+					return
+				}
+				if b.Len() > 0 {
+					program.Send(ui.AppendMsg{Text: b.String()})
+				}
+			}
+			nextSince = pollStarted.Add(-eventTailLookback)
+			timer := time.NewTimer(interval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+	}()
+	_, runErr := program.Run()
+	cancel()
+	if runErr != nil {
+		if errors.Is(runErr, tea.ErrInterrupted) {
+			return nil
+		}
+		return runErr
+	}
+	select {
+	case err := <-errCh:
+		return err
+	default:
+		return nil
 	}
 }
 

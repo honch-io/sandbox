@@ -5,11 +5,13 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/honch/sdk/tools/sandbox/internal/config"
+	"github.com/honch/sdk/tools/sandbox/internal/session"
 )
 
 type fakeTailClient struct {
@@ -30,7 +32,7 @@ func TestTailEventsPollsUntilContextCanceled(t *testing.T) {
 	client := &fakeTailClient{cancel: cancel}
 	var out bytes.Buffer
 
-	err := tailEvents(ctx, &out, config.Config{}, client, time.Unix(0, 0), time.Millisecond)
+	err := tailEvents(ctx, strings.NewReader(""), &out, config.Config{}, client, time.Unix(0, 0), time.Millisecond)
 	if err != nil {
 		t.Fatalf("tailEvents returned error: %v", err)
 	}
@@ -61,7 +63,7 @@ func TestTailEventsKeepsLookbackOverlapBetweenPolls(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &recordingTailClient{cancel: cancel}
 
-	err := tailEvents(ctx, io.Discard, config.Config{}, client, time.Unix(0, 0), time.Millisecond)
+	err := tailEvents(ctx, strings.NewReader(""), io.Discard, config.Config{}, client, time.Unix(0, 0), time.Millisecond)
 	if err != nil {
 		t.Fatalf("tailEvents returned error: %v", err)
 	}
@@ -92,7 +94,7 @@ func TestTailEventsSuppressesRowsAlreadySeenInLookback(t *testing.T) {
 	client := &duplicateTailClient{cancel: cancel}
 	var out bytes.Buffer
 
-	err := tailEvents(ctx, &out, config.Config{}, client, time.Unix(0, 0), time.Millisecond)
+	err := tailEvents(ctx, strings.NewReader(""), &out, config.Config{}, client, time.Unix(0, 0), time.Millisecond)
 	if err != nil {
 		t.Fatalf("tailEvents returned error: %v", err)
 	}
@@ -128,7 +130,7 @@ func TestTailEventsReturnsWriteError(t *testing.T) {
 	client := &cancelingTailClient{cancel: cancel}
 	out := failingTailWriter{}
 
-	err := tailEvents(ctx, out, config.Config{}, client, time.Unix(0, 0), time.Millisecond)
+	err := tailEvents(ctx, strings.NewReader(""), out, config.Config{}, client, time.Unix(0, 0), time.Millisecond)
 	if err == nil {
 		t.Fatal("tailEvents ignored the write failure")
 	}
@@ -156,5 +158,18 @@ func TestTailSeenEvictsOldRows(t *testing.T) {
 	}
 	if !seen.remember("event-1") {
 		t.Fatal("old event-1 was not evicted")
+	}
+}
+
+func TestEventTailSinceUsesSessionStart(t *testing.T) {
+	started := time.Date(2026, 5, 17, 10, 11, 12, 0, time.UTC)
+	manager := session.NewManager(filepath.Join(t.TempDir(), "state.json"))
+	if err := manager.Save(session.State{StartedAt: started}); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+
+	got := eventTailSince(manager)
+	if !got.Equal(started) {
+		t.Fatalf("eventTailSince = %s, want %s", got, started)
 	}
 }

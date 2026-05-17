@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"context"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -620,7 +621,7 @@ func TestRunCommandRejectsUnknownAdapterWithRegistryNames(t *testing.T) {
 
 func TestRunnerServeResolvesAdapterKindFromRegistry(t *testing.T) {
 	rootDir := t.TempDir()
-	adaptersDir := filepath.Join(rootDir, "tools", "sandbox", "adapters")
+	adaptersDir := filepath.Join(rootDir, "adapters")
 	if err := os.MkdirAll(adaptersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -930,7 +931,7 @@ func TestStartProxyProcessRejectsUnownedPortListener(t *testing.T) {
 	cfg := configForTest()
 	cfg.Ports.Proxy = listener.Addr().(*net.TCPAddr).Port
 
-	proc, err := startProxyProcess(rootDir, cfg)
+	proc, err := startProxyProcess(context.Background(), rootDir, cfg, strings.NewReader(""), io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("startProxyProcess accepted unowned proxy port listener")
 	}
@@ -955,7 +956,7 @@ func TestStartProxyProcessRejectsPortWithStaleLivePID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	proc, err := startProxyProcess(rootDir, cfg)
+	proc, err := startProxyProcess(context.Background(), rootDir, cfg, strings.NewReader(""), io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("startProxyProcess accepted an unrelated live PID as proxy owner")
 	}
@@ -1003,7 +1004,7 @@ func unusedTCPPort(t *testing.T) int {
 
 func writeAdapterRegistryForTest(t *testing.T, root string) {
 	t.Helper()
-	dir := filepath.Join(root, "tools", "sandbox", "adapters")
+	dir := filepath.Join(root, "adapters")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}

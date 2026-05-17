@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,7 +26,7 @@ func newRunCommand(deps Dependencies) *cobra.Command {
 		Short: "Build and run an SDK sandbox harness",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 1 {
-				return fmt.Errorf(ui.FormatError("missing adapter name", []ui.Row{
+				return errors.New(ui.FormatError("missing adapter name", []ui.Row{
 					{Key: "required", Value: "honch sandbox run <adapter>"},
 					{Key: "example", Value: "honch sandbox run c-core --detach"},
 					{Key: "adapters", Value: "honch sandbox adapters list"},
@@ -42,7 +43,7 @@ func newRunCommand(deps Dependencies) *cobra.Command {
 			if state, err := requireLiveSandbox(cmd, cfg, manager); err != nil {
 				return err
 			} else if runnerActive(state.Runner) {
-				return fmt.Errorf(ui.FormatError("sandbox runner is already active", []ui.Row{
+				return errors.New(ui.FormatError("sandbox runner is already active", []ui.Row{
 					{Key: "runner", Value: state.Runner.Adapter},
 					{Key: "next", Value: "stop the active sandbox before starting another runner"},
 					{Key: "command", Value: "honch sandbox stop"},
@@ -121,9 +122,9 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 		return err
 	}
 	var binary string
-	if err := ui.WithSpinnerDone(cmd.Context(), cmd.ErrOrStderr(), "building "+adapterConfig.Name+" harness", adapterConfig.Name+" harness has been built", func() error {
+	if err := ui.WithSpinnerDone(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), "building "+adapterConfig.Name+" harness", adapterConfig.Name+" harness has been built", func(ctx context.Context) error {
 		var buildErr error
-		binary, buildErr = r.Build(cmd.Context())
+		binary, buildErr = r.Build(ctx)
 		return buildErr
 	}); err != nil {
 		return err
@@ -141,21 +142,23 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 		}
 		return nil
 	}
-	proc, err := runner.Start(cmd.Context(), binary, env, os.Stdin, cmd.OutOrStdout(), cmd.ErrOrStderr())
-	if err != nil {
+	return runAttachedProcessViewer(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg, time.Now().UTC(), controlPath, "Honch sandbox run "+adapterConfig.Name, func(ctx context.Context, stdout io.Writer, stderr io.Writer) error {
+		proc, err := runner.Start(ctx, binary, env, nil, stdout, stderr)
+		if err != nil {
+			return err
+		}
+		state, _ := manager.Load()
+		state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Process.Pid, Detached: false, ControlPath: controlPath}
+		state.Proxy = runnerProxyState(ctx, cfg)
+		if err := saveForegroundRunnerState(manager, state, proc); err != nil {
+			return err
+		}
+		err = proc.Wait()
+		if clearErr := clearForegroundRunnerState(manager); clearErr != nil {
+			return errors.Join(err, clearErr)
+		}
 		return err
-	}
-	state, _ := manager.Load()
-	state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Process.Pid, Detached: false, ControlPath: controlPath}
-	state.Proxy = runnerProxyState(cmd.Context(), cfg)
-	if err := saveForegroundRunnerState(manager, state, proc); err != nil {
-		return err
-	}
-	err = proc.Wait()
-	if clearErr := clearForegroundRunnerState(manager); clearErr != nil {
-		return errors.Join(err, clearErr)
-	}
-	return err
+	})
 }
 
 func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manager session.Manager, adapterConfig adapter.Config, detach bool) error {
@@ -178,9 +181,9 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 		return err
 	}
 	var build runner.EspIDFBuild
-	if err := ui.WithSpinnerDone(cmd.Context(), cmd.ErrOrStderr(), "building ESP-IDF firmware", "ESP-IDF firmware has been built", func() error {
+	if err := ui.WithSpinnerDone(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), "building ESP-IDF firmware", "ESP-IDF firmware has been built", func(ctx context.Context) error {
 		var buildErr error
-		build, buildErr = r.Build(cmd.Context(), runner.EspIDFSettings{
+		build, buildErr = r.Build(ctx, runner.EspIDFSettings{
 			Endpoint: espIDFEndpoint(cfg),
 			Token:    cfg.Sandbox.Token,
 		})
@@ -200,17 +203,19 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 		}
 		return nil
 	}
-	state, _ := manager.Load()
-	state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: os.Getpid(), Detached: false, ControlPath: controlPath}
-	state.Proxy = runnerProxyState(cmd.Context(), cfg)
-	if err := manager.Save(state); err != nil {
+	return runAttachedProcessViewer(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg, time.Now().UTC(), controlPath, "Honch sandbox run "+adapterConfig.Name, func(ctx context.Context, stdout io.Writer, stderr io.Writer) error {
+		state, _ := manager.Load()
+		state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: os.Getpid(), Detached: false, ControlPath: controlPath}
+		state.Proxy = runnerProxyState(ctx, cfg)
+		if err := manager.Save(state); err != nil {
+			return err
+		}
+		err := r.Run(ctx, build, controlPath, stdout, stderr)
+		if clearErr := clearForegroundRunnerState(manager); clearErr != nil {
+			return errors.Join(err, clearErr)
+		}
 		return err
-	}
-	err = r.Run(cmd.Context(), build, controlPath, cmd.OutOrStdout(), cmd.ErrOrStderr())
-	if clearErr := clearForegroundRunnerState(manager); clearErr != nil {
-		return errors.Join(err, clearErr)
-	}
-	return err
+	})
 }
 
 func saveForegroundRunnerState(manager session.Manager, state session.State, cmd *exec.Cmd) error {
@@ -316,7 +321,7 @@ func serveEspIDFRunner(cmd *cobra.Command, root string, cfg config.Config, adapt
 		EmulatorNetwork: adapterConfig.Emulator.Network,
 	}
 	build := runner.EspIDFBuild{
-		ProjectDir: filepath.Join(root, "tools", "sandbox", adapterConfig.Harness),
+		ProjectDir: filepath.Join(root, adapterConfig.Harness),
 		BuildDir:   target,
 	}
 	return r.Run(context.Background(), build, controlPath, cmd.OutOrStdout(), cmd.ErrOrStderr())

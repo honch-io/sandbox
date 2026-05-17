@@ -51,25 +51,54 @@ func newStartCommand(deps Dependencies) *cobra.Command {
 				case skipMigrations:
 					service.SkipMigrations = true
 				default:
-					approved, err := confirm(cmd.InOrStdin(), cmd.OutOrStdout(), "Run platform database migrations with `bun run db:migrate`? [y/N] ")
-					if err != nil {
-						return err
-					}
-					if approved {
-						service.ApproveMigrations = func() (bool, error) {
-							return true, nil
+					if ui.IsInteractive(cmd.InOrStdin(), cmd.OutOrStdout()) && !ui.IsPlain() {
+						choice, err := ui.PromptChoice(cmd.InOrStdin(), cmd.OutOrStdout(), "Platform database migrations", []ui.PromptOption{
+							{Label: "Run migrations", Description: "run platform migrations before starting"},
+							{Label: "Skip migrations", Description: "start without running platform migrations"},
+							{Label: "Cancel", Description: "abort the start command"},
+						}, 1)
+						if err != nil {
+							if errors.Is(err, ui.ErrPromptCancelled) {
+								return fmt.Errorf("start cancelled")
+							}
+							return err
+						}
+						switch choice {
+						case 0:
+							service.ApproveMigrations = func() (bool, error) {
+								return true, nil
+							}
+						case 1:
+							service.SkipMigrations = true
+						default:
+							return fmt.Errorf("start cancelled")
 						}
 					} else {
-						service.SkipMigrations = true
+						approved, err := confirm(cmd.InOrStdin(), cmd.OutOrStdout(), "Run platform database migrations with `bun run db:migrate`? [y/N] ")
+						if err != nil {
+							return err
+						}
+						if approved {
+							service.ApproveMigrations = func() (bool, error) {
+								return true, nil
+							}
+						} else {
+							service.SkipMigrations = true
+						}
 					}
 				}
 			}
-			if err := ui.WithSpinnerDone(cmd.Context(), cmd.ErrOrStderr(), "starting sandbox", "sandbox has been started", func() error {
-				if err := service.Start(cmd.Context(), cfg); err != nil {
+			if ui.IsInteractive(cmd.InOrStdin(), cmd.ErrOrStderr()) && !ui.IsPlain() {
+				if err := resolveProxyPortConflict(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), root, cfg); err != nil {
+					return err
+				}
+			}
+			if err := ui.WithSpinnerDone(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), "starting sandbox", "sandbox has been started", func(ctx context.Context) error {
+				if err := service.Start(ctx, cfg); err != nil {
 					rollbackStartedSandbox(cmd.Context(), root, cfg, manager, nil)
 					return err
 				}
-				proxyProc, err := startProxyProcess(root, cfg)
+				proxyProc, err := startProxyProcess(ctx, root, cfg, cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr())
 				if err != nil {
 					rollbackStartedSandbox(cmd.Context(), root, cfg, manager, nil)
 					return err

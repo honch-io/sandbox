@@ -1,13 +1,9 @@
 package commands
 
 import (
-	"bufio"
-	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/honch/sdk/tools/sandbox/internal/config"
 	"github.com/honch/sdk/tools/sandbox/internal/session"
@@ -63,17 +59,7 @@ func valueOr(value string, fallback string) string {
 }
 
 func confirm(in io.Reader, out io.Writer, prompt string) (bool, error) {
-	_, _ = fmt.Fprint(out, prompt)
-	reader := bufio.NewReader(in)
-	answer, err := reader.ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return false, err
-	}
-	if !ui.IsPlain() {
-		_, _ = fmt.Fprint(out, "\033[1A\r\033[2K")
-	}
-	answer = strings.ToLower(strings.TrimSpace(answer))
-	return answer == "y" || answer == "yes", nil
+	return ui.PromptConfirm(in, out, prompt)
 }
 
 func stringTrim(data []byte) string {

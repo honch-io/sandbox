@@ -34,7 +34,6 @@ honch_status_t sandbox_app_init(sandbox_app_t *app, const sandbox_app_config_t *
         .disable_background_flush = 1,
         .battery_callback = sandbox_battery_level,
         .battery_low_threshold = 15,
-        .durability_mode = HONCH_DURABILITY_OS_BUFFERED,
     };
 
     honch_status_t status = honch_init(&app->client, &config);

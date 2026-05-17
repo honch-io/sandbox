@@ -48,7 +48,7 @@ func TestAdaptersShowPrintsAdapterDetails(t *testing.T) {
 
 func TestAdaptersValidateReportsInvalidConfig(t *testing.T) {
 	rootDir := t.TempDir()
-	dir := filepath.Join(rootDir, "tools", "sandbox", "adapters")
+	dir := filepath.Join(rootDir, "adapters")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}

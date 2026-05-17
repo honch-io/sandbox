@@ -67,7 +67,7 @@ func TestEspIDFRunnerBuildUsesIDFPyWithStateBuildDirAndSandboxDefines(t *testing
 	}
 	repoRoot := t.TempDir()
 	stateDir := filepath.Join(repoRoot, ".honch-sandbox")
-	projectDir := filepath.Join(repoRoot, "tools", "sandbox", "harnesses", "esp-idf")
+	projectDir := filepath.Join(repoRoot, "harnesses", "esp-idf")
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestCCoreRunnerBuildUsesConfiguredHarnessDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantSource := filepath.Join(repoRoot, "tools", "sandbox", "harnesses", "custom-c-core")
+	wantSource := filepath.Join(repoRoot, "harnesses", "custom-c-core")
 	if !strings.Contains(string(data), "-S "+wantSource) {
 		t.Fatalf("cmake log did not use configured harness dir:\n%s", string(data))
 	}
@@ -156,7 +156,7 @@ func TestEspIDFRunnerBuildUsesManagedIDFExportWhenIDFPathIsSet(t *testing.T) {
 		t.Skip("fake export.sh script is POSIX-only")
 	}
 	repoRoot := t.TempDir()
-	projectDir := filepath.Join(repoRoot, "tools", "sandbox", "harnesses", "esp-idf")
+	projectDir := filepath.Join(repoRoot, "harnesses", "esp-idf")
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestEspIDFRunnerRunStartsQEMUAndConnectsSerial(t *testing.T) {
 		t.Skip("fake idf.py script is POSIX-only")
 	}
 	repoRoot := t.TempDir()
-	projectDir := filepath.Join(repoRoot, "tools", "sandbox", "harnesses", "esp-idf")
+	projectDir := filepath.Join(repoRoot, "harnesses", "esp-idf")
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func TestEspIDFRunnerRunUsesConfiguredAdapterSettings(t *testing.T) {
 		t.Skip("fake idf.py/qemu scripts are POSIX-only")
 	}
 	repoRoot := t.TempDir()
-	projectDir := filepath.Join(repoRoot, "tools", "sandbox", "harnesses", "custom-esp-idf")
+	projectDir := filepath.Join(repoRoot, "harnesses", "custom-esp-idf")
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +317,7 @@ func TestEspIDFRunnerRunFailsWhenFirmwareNeverReportsReady(t *testing.T) {
 		t.Skip("fake qemu script is POSIX-only")
 	}
 	repoRoot := t.TempDir()
-	projectDir := filepath.Join(repoRoot, "tools", "sandbox", "harnesses", "esp-idf")
+	projectDir := filepath.Join(repoRoot, "harnesses", "esp-idf")
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

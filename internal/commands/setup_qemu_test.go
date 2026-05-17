@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"context"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -128,7 +129,7 @@ func TestSandboxImagesPullRunsDockerPulls(t *testing.T) {
 	}
 	logPath := filepath.Join(rootDir, "docker.log")
 	docker := filepath.Join(binDir, "docker")
-	script := "#!/bin/sh\necho \"$@\" >> " + logPath + "\nexit 0\n"
+	script := "#!/bin/sh\necho noisy-stdout\necho noisy-stderr >&2\necho \"$@\" >> " + logPath + "\nexit 0\n"
 	if err := os.WriteFile(docker, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -155,6 +156,56 @@ func TestSandboxImagesPullRunsDockerPulls(t *testing.T) {
 		if !strings.Contains(string(data), want) {
 			t.Fatalf("docker pulls missing %q:\n%s", want, string(data))
 		}
+	}
+	for _, want := range []string{"noisy-stdout", "noisy-stderr"} {
+		if strings.Contains(out.String(), want) {
+			t.Fatalf("images pull leaked docker output %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestSandboxImagesPullSkipsAlreadyPresentImagesUnlessConfirmed(t *testing.T) {
+	rootDir := t.TempDir()
+	binDir := filepath.Join(rootDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(rootDir, "docker.log")
+	docker := filepath.Join(binDir, "docker")
+	script := "#!/bin/sh\nif [ \"$1 $2\" = \"image inspect\" ]; then exit 0; fi\necho \"$@\" >> " + logPath + "\nexit 0\n"
+	if err := os.WriteFile(docker, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+
+	prevPrompt := confirmImagePull
+	confirmImagePull = func(stdin io.Reader, out io.Writer, prompt string) (bool, error) {
+		return false, nil
+	}
+	t.Cleanup(func() { confirmImagePull = prevPrompt })
+
+	prevShouldConfirm := shouldConfirmImagePull
+	shouldConfirmImagePull = func(stdin io.Reader, out io.Writer) bool { return true }
+	t.Cleanup(func() { shouldConfirmImagePull = prevShouldConfirm })
+
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "images", "pull"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("images pull returned error: %v\n%s", err, out.String())
+	}
+	if data, err := os.ReadFile(logPath); err != nil {
+		if !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	} else if len(data) > 0 {
+		t.Fatalf("unexpected docker pull when image already present and declined:\n%s", string(data))
+	}
+	if !strings.Contains(out.String(), "skipping postgres:16-alpine") {
+		t.Fatalf("images pull did not report skip:\n%s", out.String())
 	}
 }
 

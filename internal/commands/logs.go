@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/honch/sdk/tools/sandbox/internal/config"
 	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
@@ -41,14 +42,14 @@ func newLogsCommand(deps Dependencies) *cobra.Command {
 			if len(args) == 1 {
 				target = args[0]
 			}
-			return printLogs(cmd.OutOrStdout(), root, cfg, target, logOptions{Tail: tail})
+			return printLogs(cmd.InOrStdin(), cmd.OutOrStdout(), root, cfg, target, logOptions{Tail: tail})
 		},
 	}
 	cmd.Flags().IntVar(&tail, "tail", 80, "number of recent log lines to print per file")
 	return cmd
 }
 
-func printLogs(out io.Writer, root string, cfg config.Config, target string, opts logOptions) error {
+func printLogs(in io.Reader, out io.Writer, root string, cfg config.Config, target string, opts logOptions) error {
 	logDir := filepath.Join(root, cfg.Sandbox.StateDir, "logs")
 	var files []string
 	switch target {
@@ -64,6 +65,19 @@ func printLogs(out io.Writer, root string, cfg config.Config, target string, opt
 			{Key: "example", Value: "honch sandbox logs device"},
 		}))
 	}
+	if ui.IsInteractive(in, out) && !ui.IsPlain() {
+		text, err := buildLogsText(logDir, files, opts)
+		if err != nil {
+			return err
+		}
+		model := ui.NewTextViewerModel("Honch sandbox "+target+" logs", text, ui.ViewerFooter())
+		_, err = tea.NewProgram(model, tea.WithInput(in), tea.WithOutput(out), tea.WithAltScreen()).Run()
+		return err
+	}
+	return writeLogs(out, logDir, files, opts)
+}
+
+func writeLogs(out io.Writer, logDir string, files []string, opts logOptions) error {
 	for _, file := range files {
 		path := filepath.Join(logDir, file)
 		if _, err := os.Stat(path); err != nil {
@@ -90,6 +104,43 @@ func printLogs(out io.Writer, root string, cfg config.Config, target string, opt
 		}
 	}
 	return nil
+}
+
+func buildLogsText(logDir string, files []string, opts logOptions) (string, error) {
+	var b strings.Builder
+	for _, file := range files {
+		path := filepath.Join(logDir, file)
+		if _, err := os.Stat(path); err != nil {
+			if os.IsNotExist(err) {
+				b.WriteString(file)
+				b.WriteString(": no logs yet\n")
+				continue
+			}
+			return "", err
+		}
+		tail := opts.Tail
+		if tail <= 0 {
+			tail = 80
+		}
+		text, err := tailFile(path, tail)
+		if err != nil {
+			return "", err
+		}
+		b.WriteString("\n")
+		b.WriteString(ui.Heading(file))
+		b.WriteString("\n")
+		b.WriteString("path: ")
+		b.WriteString(path)
+		b.WriteString("\n")
+		b.WriteString("showing last ")
+		b.WriteString(fmt.Sprint(tail))
+		b.WriteString(" lines\n\n")
+		b.WriteString(text)
+		if len(text) > 0 && text[len(text)-1] != '\n' {
+			b.WriteString("\n")
+		}
+	}
+	return b.String(), nil
 }
 
 func tailFile(path string, maxLines int) (string, error) {

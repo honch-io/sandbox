@@ -20,7 +20,7 @@ func TestPrintLogsHonorsTailOptionAndShowsPath(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if err := printLogs(&out, root, cfg, "device", logOptions{Tail: 1}); err != nil {
+	if err := printLogs(strings.NewReader(""), &out, root, cfg, "device", logOptions{Tail: 1}); err != nil {
 		t.Fatalf("printLogs returned error: %v", err)
 	}
 	text := out.String()

@@ -9,7 +9,7 @@ import (
 
 func TestLoadRegistryReadsAdapterConfigs(t *testing.T) {
 	root := t.TempDir()
-	adaptersDir := filepath.Join(root, "tools", "sandbox", "adapters")
+	adaptersDir := filepath.Join(root, "adapters")
 	if err := os.MkdirAll(adaptersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ controls:
 
 func TestLoadRegistryRejectsDuplicateAdapterNames(t *testing.T) {
 	root := t.TempDir()
-	adaptersDir := filepath.Join(root, "tools", "sandbox", "adapters")
+	adaptersDir := filepath.Join(root, "adapters")
 	if err := os.MkdirAll(adaptersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestLoadRegistryRejectsDuplicateAdapterNames(t *testing.T) {
 
 func TestLoadRegistryRejectsIncompletePosixAdapter(t *testing.T) {
 	root := t.TempDir()
-	adaptersDir := filepath.Join(root, "tools", "sandbox", "adapters")
+	adaptersDir := filepath.Join(root, "adapters")
 	if err := os.MkdirAll(adaptersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestLoadRegistryRejectsIncompletePosixAdapter(t *testing.T) {
 
 func TestLoadRegistryRejectsIncompleteQEMUAdapter(t *testing.T) {
 	root := t.TempDir()
-	adaptersDir := filepath.Join(root, "tools", "sandbox", "adapters")
+	adaptersDir := filepath.Join(root, "adapters")
 	if err := os.MkdirAll(adaptersDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
