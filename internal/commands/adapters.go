@@ -150,7 +150,7 @@ func newAdaptersDoctorCommand(deps Dependencies) *cobra.Command {
 				{Name: adapterConfig.Name, Rows: rows},
 			}))
 			if adapterDoctorMissing(rows) {
-				return errors.New(ui.FormatError("adapter requirements are not ready", rows))
+				return ui.NewSilentError(ui.FormatError("adapter requirements are not ready", rows))
 			}
 			return nil
 		},

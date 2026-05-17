@@ -49,7 +49,7 @@ func newQEMUDoctorCommand(deps Dependencies) *cobra.Command {
 }
 
 func qemuNotReadyError() error {
-	return errors.New(ui.FormatError("ESP-IDF QEMU tools are not ready", []ui.Row{
+	return ui.NewSilentError(ui.FormatError("ESP-IDF QEMU tools are not ready", []ui.Row{
 		{Key: "install", Value: "honch sandbox qemu install"},
 		{Key: "check", Value: "honch sandbox qemu doctor"},
 	}))

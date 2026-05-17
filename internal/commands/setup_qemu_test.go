@@ -13,6 +13,7 @@ import (
 
 	"github.com/honch/sdk/tools/sandbox/internal/proxy"
 	"github.com/honch/sdk/tools/sandbox/internal/session"
+	"github.com/honch/sdk/tools/sandbox/internal/ui"
 )
 
 func TestSandboxSetupDryRunOffersSupportedInstallActions(t *testing.T) {
@@ -228,6 +229,9 @@ func TestSandboxDoctorReportsMissingPythonWithFix(t *testing.T) {
 	if err == nil {
 		t.Fatal("doctor succeeded with missing Python")
 	}
+	if !ui.IsSilentError(err) {
+		t.Fatalf("doctor error should be silent: %T", err)
+	}
 	combined := err.Error() + "\n" + out.String()
 	for _, want := range []string{
 		"Honch sandbox doctor",
@@ -295,6 +299,9 @@ func TestQEMUDoctorReportsMissingToolsWithInstallCommand(t *testing.T) {
 	err := root.Execute()
 	if err == nil {
 		t.Fatal("doctor succeeded without ESP-IDF tools")
+	}
+	if !ui.IsSilentError(err) {
+		t.Fatalf("qemu doctor error should be silent: %T", err)
 	}
 	combined := err.Error() + "\n" + out.String()
 	for _, want := range []string{
@@ -379,38 +386,46 @@ func TestQEMUDoctorRecognizesManagedToolchainWithoutIDFPath(t *testing.T) {
 	rootDir := t.TempDir()
 	idfPath := filepath.Join(rootDir, ".honch-sandbox", "toolchains", "esp-idf")
 	toolsDir := filepath.Join(idfPath, "tools")
-	qemuDir := filepath.Join(rootDir, "qemu-bin")
+	binDir := filepath.Join(rootDir, "bin")
 	if err := os.MkdirAll(toolsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(qemuDir, 0o755); err != nil {
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(toolsDir, "idf.py"), []byte("# fake idf.py\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	qemuPath := filepath.Join(qemuDir, "qemu-system-xtensa")
+	for _, name := range []string{"git", "python3"} {
+		path := filepath.Join(binDir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	qemuPath := filepath.Join(binDir, "qemu-system-xtensa")
 	if err := os.WriteFile(qemuPath, []byte("#!/bin/sh\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	exportScript := "export PATH=" + qemuDir + ":$PATH\n"
-	if err := os.WriteFile(filepath.Join(idfPath, "export.sh"), []byte(exportScript), 0o700); err != nil {
+	if err := os.WriteFile(filepath.Join(idfPath, "export.sh"), []byte("# managed\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("PATH", binDir)
 	t.Setenv("IDF_PATH", "")
 
-	status := qemuToolStatus(rootDir, configForTest())
-	if !status.Ready() {
-		t.Fatalf("managed toolchain was not ready: %+v", status)
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "qemu", "doctor"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("qemu doctor returned error: %v\n%s", err, out.String())
 	}
-	if status.IDFSource != "managed" {
-		t.Fatalf("IDFSource = %q, want managed", status.IDFSource)
-	}
-	if status.IDFPy != filepath.Join(toolsDir, "idf.py") {
-		t.Fatalf("IDFPy = %q", status.IDFPy)
-	}
-	if status.QEMUXtensa != qemuPath {
-		t.Fatalf("QEMUXtensa = %q, want %q", status.QEMUXtensa, qemuPath)
+	text := out.String()
+	for _, want := range []string{"managed", filepath.Join(toolsDir, "idf.py"), qemuPath} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("managed toolchain output missing %q:\n%s", want, text)
+		}
 	}
 }
 

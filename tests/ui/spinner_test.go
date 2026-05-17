@@ -1,18 +1,20 @@
-package ui
+package ui_test
 
 import (
 	"bytes"
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/honch/sdk/tools/sandbox/internal/ui"
 )
 
 func TestWithSpinnerPlainPrintsStartAndDone(t *testing.T) {
-	SetPlain(true)
-	t.Cleanup(func() { SetPlain(false) })
+	ui.SetPlain(true)
+	t.Cleanup(func() { ui.SetPlain(false) })
 	var out bytes.Buffer
 
-	err := WithSpinner(context.Background(), &out, "building harness", func() error {
+	err := ui.WithSpinner(context.Background(), &out, "building harness", func() error {
 		return nil
 	})
 	if err != nil {

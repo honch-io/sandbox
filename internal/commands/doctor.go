@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"runtime"
 
@@ -150,5 +149,5 @@ func (r sandboxDoctorReport) Error() error {
 	if r.Ready() {
 		return nil
 	}
-	return errors.New(ui.FormatError("sandbox setup is incomplete", r.Missing))
+	return ui.NewSilentError(ui.FormatError("sandbox setup is incomplete", r.Missing))
 }
