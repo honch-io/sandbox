@@ -1,1 +1,33 @@
+# macOS
+.DS_Store
+.Spotlight-V100/
+.Trashes/
+._*
+
+# Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Go build and test outputs
+bin/
+honch
+*.test
+*.out
+*.coverprofile
+coverage.out
+*.prof
+*.pprof
+
+# Local sandbox state
+.honch-sandbox/
+
+# Logs and temp files
+*.log
+tmp/
+temp/
+
+# Local agent instructions
 AGENTS.md
