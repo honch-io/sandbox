@@ -83,6 +83,9 @@ your local checkout is different.
 
 Use `./honch sandbox flags` to inspect command-specific flags without opening
 each subcommand help screen.
+Use `./honch sandbox config list` to inspect the resolved values, `set` to
+change a single key, `edit` to open `.honch-sandbox.yaml` in your editor, and
+`init` to write a starter override file.
 
 ## Working The Loop
 

@@ -58,6 +58,7 @@ func newSandboxCommand(deps Dependencies) *cobra.Command {
 		RunE:  commandGroupRunE,
 	}
 	cmd.AddCommand(
+		newConfigCommand(deps),
 		newDoctorCommand(deps),
 		newSetupCommand(deps),
 		newImagesCommand(deps),
