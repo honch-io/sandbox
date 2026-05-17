@@ -75,6 +75,7 @@ func newSandboxCommand(deps Dependencies) *cobra.Command {
 		newLogsCommand(deps),
 		newEventsCommand(deps),
 		newScenarioCommand(deps),
+		newFlagsCommand(deps),
 		newQEMUCommand(deps),
 		newProxyServeCommand(deps),
 		newRunnerServeCommand(deps),

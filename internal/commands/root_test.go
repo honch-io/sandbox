@@ -42,6 +42,7 @@ func TestRootCommandExposesSandboxContract(t *testing.T) {
 		"flush",
 		"reset",
 		"logs",
+		"flags",
 		"events",
 		"scenario",
 		"qemu",
@@ -76,6 +77,8 @@ func TestRootHelpUsesSandboxHelpFormat(t *testing.T) {
 		"      doctor   ›   Check local prerequisites",
 		"      setup    ›   Install supported prerequisites",
 		"      qemu     ›   Manage ESP-IDF QEMU tooling",
+		"    Inspect",
+		"      flags    ›   Inspect command flags",
 	} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("help missing %q:\n%s", want, help)

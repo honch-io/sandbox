@@ -81,6 +81,9 @@ Defaults live in `config/default.yaml`:
 Override those values from the SDK repo root with `.honch-sandbox.yaml` when
 your local checkout is different.
 
+Use `./honch sandbox flags` to inspect command-specific flags without opening
+each subcommand help screen.
+
 ## Working The Loop
 
 For a normal contributor loop:

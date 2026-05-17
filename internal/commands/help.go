@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
@@ -84,6 +85,7 @@ func sandboxHelpSections() []ui.CommandSection {
 		{
 			Name: "Inspect",
 			Commands: []ui.CommandRow{
+				{Name: "flags", Description: "Inspect command flags"},
 				{Name: "events", Description: "Query ClickHouse events"},
 				{Name: "logs", Description: "Print sandbox logs"},
 				{Name: "scenario", Description: "Run a YAML scenario"},
@@ -125,8 +127,14 @@ func commandFlagRows(cmd *cobra.Command) []ui.Row {
 	if len(visibleCommands(cmd)) > 0 {
 		return nil
 	}
+	rows := flagRows(cmd.InheritedFlags(), "")
+	rows = append(rows, flagRows(cmd.NonInheritedFlags(), "")...)
+	return rows
+}
+
+func flagRows(flags *pflag.FlagSet, prefix string) []ui.Row {
 	rows := []ui.Row{}
-	cmd.NonInheritedFlags().VisitAll(func(flag *pflag.Flag) {
+	flags.VisitAll(func(flag *pflag.Flag) {
 		if flag.Hidden {
 			return
 		}
@@ -134,7 +142,19 @@ func commandFlagRows(cmd *cobra.Command) []ui.Row {
 		if flag.Shorthand != "" {
 			name = "-" + flag.Shorthand + ", " + name
 		}
+		if prefix != "" {
+			name = prefix + " " + name
+		}
 		rows = append(rows, ui.Row{Key: name, Value: flag.Usage})
 	})
 	return rows
+}
+
+func commandPrefix(cmd *cobra.Command, basePath string) string {
+	prefix := strings.TrimPrefix(cmd.CommandPath(), basePath+" ")
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" {
+		return cmd.Name()
+	}
+	return prefix
 }
