@@ -272,6 +272,63 @@ func FormatGroupedCommandHelp(title string, description string, flow string, sec
 	return b.String()
 }
 
+// FormatSectionsWrapped keeps doctor rows readable by breaking path-like
+// entries onto a second line while leaving short status rows inline.
+func FormatSectionsWrapped(title string, sections []Section) string {
+	inlineWidth := 0
+	for _, section := range sections {
+		for _, row := range section.Rows {
+			if isDoctorPathRow(row) {
+				continue
+			}
+			if len(row.Key) > inlineWidth {
+				inlineWidth = len(row.Key)
+			}
+		}
+	}
+	if inlineWidth < 7 {
+		inlineWidth = 7
+	}
+
+	var b strings.Builder
+	b.WriteString("\n")
+	b.WriteString("  ")
+	b.WriteString(Heading(title))
+	b.WriteString("\n\n")
+	for i, section := range sections {
+		if section.Name != "" {
+			b.WriteString("     ")
+			b.WriteString(render(label, section.Name))
+			b.WriteString("\n")
+		}
+		indent := "     "
+		if section.Name != "" {
+			indent = "       "
+		}
+		for _, row := range section.Rows {
+			if isDoctorPathRow(row) {
+				b.WriteString(indent)
+				b.WriteString(render(label, row.Key))
+				b.WriteString("\n")
+				b.WriteString(indent)
+				b.WriteString(" ")
+				b.WriteString(render(arrow, "›"))
+				b.WriteString("   ")
+				b.WriteString(render(valueStyle(row.Value), fmt.Sprint(row.Value)))
+				b.WriteString("\n")
+				continue
+			}
+			b.WriteString(indent)
+			b.WriteString(formatRowLimited(row.Key, row.Value, inlineWidth, 0))
+			b.WriteString("\n")
+		}
+		if section.Name != "" && i < len(sections)-1 {
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
+}
+
 func commandNameWidth(sections []CommandSection) int {
 	width := 0
 	for _, section := range sections {
@@ -306,6 +363,24 @@ func render(style lipgloss.Style, text string) string {
 		return text
 	}
 	return style.Render(text)
+}
+
+func isDoctorPathRow(row Row) bool {
+	return looksLikeDoctorPath(fmt.Sprint(row.Key)) || looksLikeDoctorPath(fmt.Sprint(row.Value))
+}
+
+func looksLikeDoctorPath(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
+	}
+	if strings.Contains(text, "/") {
+		return true
+	}
+	if strings.HasPrefix(text, "~") {
+		return true
+	}
+	return strings.Contains(text, ":") && !strings.ContainsAny(text, " \t") && !strings.HasSuffix(text, ":")
 }
 
 func detectTerminalColumns() int {

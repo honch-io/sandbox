@@ -21,7 +21,7 @@ func newDoctorCommand(deps Dependencies) *cobra.Command {
 				return err
 			}
 			report := buildSandboxDoctorReport(root, cfg)
-			_, _ = fmt.Fprint(cmd.OutOrStdout(), ui.FormatSections("Honch sandbox doctor", report.Sections()))
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), ui.FormatSectionsWrapped("Honch sandbox doctor", report.Sections()))
 			if !report.Ready() {
 				return report.Error()
 			}

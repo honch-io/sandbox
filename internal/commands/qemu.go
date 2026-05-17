@@ -39,7 +39,7 @@ func newQEMUDoctorCommand(deps Dependencies) *cobra.Command {
 				return err
 			}
 			status := qemuToolStatus(root, cfg)
-			_, _ = fmt.Fprint(cmd.OutOrStdout(), ui.FormatSections("ESP-IDF QEMU", status.Sections()))
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), ui.FormatSectionsWrapped("ESP-IDF QEMU", status.Sections()))
 			if !status.Ready() {
 				return qemuNotReadyError()
 			}

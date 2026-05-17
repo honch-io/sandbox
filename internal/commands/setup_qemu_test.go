@@ -287,6 +287,55 @@ func TestSandboxDoctorReportsMissingDockerImages(t *testing.T) {
 	}
 }
 
+func TestSandboxDoctorWrapsPathRows(t *testing.T) {
+	rootDir := t.TempDir()
+	binDir := filepath.Join(rootDir, "very", "long", "nested", "path", "for", "python")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"git", "docker", "bun", "cargo", "cmake", "qemu-system-xtensa"} {
+		path := filepath.Join(rootDir, "bin", name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	python := filepath.Join(binDir, "python3")
+	if err := os.WriteFile(python, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "darwin" {
+		path := filepath.Join(rootDir, "bin", "brew")
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", filepath.Join(rootDir, "bin")+string(os.PathListSeparator)+binDir)
+	t.Setenv("IDF_PATH", rootDir)
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "doctor"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("doctor succeeded without qemu and images")
+	}
+	combined := err.Error() + "\n" + out.String()
+	for _, want := range []string{
+		"python",
+		python,
+		"\n        ›   ",
+	} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("doctor output missing %q:\n%s", want, combined)
+		}
+	}
+}
+
 func TestQEMUDoctorReportsMissingToolsWithInstallCommand(t *testing.T) {
 	root := NewRootCommand(Dependencies{})
 	root.SetArgs([]string{"--plain", "sandbox", "qemu", "doctor"})
@@ -426,6 +475,9 @@ func TestQEMUDoctorRecognizesManagedToolchainWithoutIDFPath(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("managed toolchain output missing %q:\n%s", want, text)
 		}
+	}
+	if !strings.Contains(text, "\n        ›   ") {
+		t.Fatalf("managed toolchain output did not wrap path rows:\n%s", text)
 	}
 }
 
