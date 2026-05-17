@@ -1,13 +1,10 @@
 # Sandbox Trust Model
 
-The sandbox is developer tooling for Honch SDK contributors. It should be safe
-to inspect, predictable to run, and explicit about commands that mutate the
-machine or sibling repositories.
+The sandbox is developer tooling for Honch SDK contributors. It should be
+predictable to run, explicit about machine changes, and isolated from customer
+release artifacts.
 
-## Install And Setup Safety
-
-Commands that install tools or change local state must show what they plan to
-do before running:
+## Setup And Install Safety
 
 - `honch sandbox setup --dry-run` prints supported setup actions.
 - `honch sandbox setup` asks before running setup actions.
@@ -19,7 +16,6 @@ do before running:
 The CLI may install managed ESP-IDF/QEMU tooling under
 `.honch-sandbox/toolchains`. Baseline system tools such as Homebrew, Python,
 Docker, Bun, Rust/Cargo, and CMake are reported by `honch sandbox doctor`.
-Where automatic install is supported, the command is printed first.
 
 ## Repository Safety
 
@@ -44,12 +40,12 @@ honch-io/
 
 ## Release Boundary
 
-Everything under `tools/sandbox/**` is developer tooling. It must not be shipped
-inside customer SDK packages or embedded SDK release artifacts.
+Everything under `tools/sandbox/**` is developer tooling. It must not be
+shipped inside customer SDK packages or embedded SDK release artifacts.
 
 Sandbox harnesses may live under `tools/sandbox/harnesses/**` and may link
-against local SDK code. They should not be moved into customer package paths just
-to support the CLI.
+against local SDK code. They should not be moved into customer package paths
+just to support the CLI.
 
 ## Adapter Safety
 
@@ -58,6 +54,6 @@ should not by itself create hidden installation side effects. Installer logic
 must remain explicit in command code and must have tests covering confirmation
 or dry-run behavior.
 
-Do not add placeholder adapter names to the registry. A new adapter should have
-a real harness, live control path, and E2E verification route before it becomes
-visible as `honch sandbox run <adapter>`.
+Do not add placeholder adapter names to the registry. A new adapter should
+have a real harness, live control path, and E2E verification route before it
+becomes visible as `honch sandbox run <adapter>`.

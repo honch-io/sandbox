@@ -1,15 +1,30 @@
 # Sandbox Adapters
 
 Adapters describe SDK harnesses that `honch sandbox run <adapter>` can launch.
-The registry is intentionally config-first so new SDK targets do not require
-hardcoding command names throughout the CLI.
+The registry is config-first so new SDK targets do not require hardcoding
+command names throughout the CLI.
 
-Supported adapters today:
+## Supported Adapters
 
-- `c-core`: native POSIX C harness. No emulator required.
-- `esp-idf`: ESP32 firmware harness running in Espressif QEMU.
+| Name | Kind | Harness | Emulator |
+| --- | --- | --- | --- |
+| `c-core` | `posix` | `harnesses/c-core` | none |
+| `esp-idf` | `qemu-esp32` | `harnesses/esp-idf` | Espressif QEMU |
 
-## Schema
+## Registry Contract
+
+Each adapter entry describes:
+
+- `name`: public CLI identifier
+- `kind`: runner implementation to use
+- `harness`: developer-only harness path under `tools/sandbox`
+- `build`: how to produce the harness artifact
+- `run`: how to launch the artifact
+- `emulator`: only for adapters that need one
+- `controls`: how the CLI sends live commands
+- `events`: where SDK events are expected to land
+
+Example:
 
 ```yaml
 name: esp-idf
@@ -28,43 +43,29 @@ emulator:
   network: open_eth
 controls:
   transport: newline-json-uart
-  path: session-runner-control-fifo
 events:
   source: real-sdk-http-cbor
   sink: real-clickhouse
 ```
 
-`name` is the public CLI identifier. `kind` selects the runner implementation.
-The only runner kinds supported now are `posix` and `qemu-esp32`.
+## Adding An Adapter
 
-`harness` must point at a developer-only harness under `tools/sandbox`, not a
-customer SDK package path. The harness should link or import the local SDK under
-test, emit real SDK events, and accept live controls through the declared
-control transport.
+Before an adapter appears in the registry, it should have:
 
-## Future MicroPython Direction
+1. A real harness under `tools/sandbox/harnesses/**`
+2. A concrete build path
+3. A concrete run path
+4. A documented control transport
+5. A real events path that ends in ClickHouse
+6. A working `sandbox run <adapter>` flow
 
-MicroPython is expected to become its own adapter, but it should not be added as
-a placeholder command before there is a real harness and verification path.
+Do not add placeholder adapter names or speculative entries. An adapter should
+only become visible when there is a real E2E verification route behind it.
 
-Expected shape:
+## Notes
 
-```yaml
-name: micropython
-kind: micropython-qemu
-harness: harnesses/micropython
-build:
-  tool: python
-run:
-  tool: qemu-system-...
-controls:
-  transport: newline-json-uart
-events:
-  source: real-sdk-http-cbor
-  sink: real-clickhouse
-```
-
-Before enabling it in the registry, define the actual emulator target, build
-artifact, control transport, and SDK import path. It must preserve the same E2E
-contract as `c-core` and `esp-idf`: real SDK process, real HTTP/CBOR, real
-capture, real worker, and ClickHouse assertions.
+- Harnesses must stay in `tools/sandbox`, not customer SDK package paths.
+- `c-core` is the fast POSIX smoke-test adapter.
+- `esp-idf` runs as firmware under QEMU.
+- Keep future adapters behind the same `sandbox run <adapter>` contract and
+  document their emulator assumptions before exposing commands.
