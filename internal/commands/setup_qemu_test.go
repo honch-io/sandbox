@@ -441,6 +441,89 @@ func TestQEMUInstallUsesManagedPathAndRequiresConfirmation(t *testing.T) {
 	}
 }
 
+func TestQEMUInstallPersistsAbsoluteIDFPathForDoctorAndRun(t *testing.T) {
+	rootDir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(cwd)
+	})
+	if err := os.Chdir(rootDir); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(rootDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCommand := func(name string) {
+		t.Helper()
+		path := filepath.Join(binDir, name)
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"python3", "qemu-system-xtensa"} {
+		writeCommand(name)
+	}
+	if runtime.GOOS == "darwin" {
+		writeCommand("brew")
+	}
+	idfRel := filepath.Join("custom idf")
+	idfAbs := filepath.Join(rootDir, idfRel)
+	if err := os.MkdirAll(filepath.Join(idfAbs, "tools"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for path, contents := range map[string]string{
+		filepath.Join(idfAbs, "export.sh"):             "#!/bin/sh\nexit 0\n",
+		filepath.Join(idfAbs, "install.sh"):            "#!/bin/sh\nexit 0\n",
+		filepath.Join(idfAbs, "tools", "idf.py"):       "#!/bin/sh\nexit 0\n",
+		filepath.Join(idfAbs, "tools", "idf_tools.py"): "#!/bin/sh\nexit 0\n",
+	} {
+		if err := os.WriteFile(path, []byte(contents), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", binDir)
+	t.Setenv("IDF_PATH", "")
+
+	root := NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "qemu", "install", "--idf-path", idfRel, "--yes"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("qemu install returned error: %v\n%s", err, out.String())
+	}
+	configData, err := os.ReadFile(filepath.Join(rootDir, ".honch-sandbox.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(configData), idfAbs) {
+		t.Fatalf("config file did not persist absolute IDF path:\n%s", string(configData))
+	}
+	if !strings.Contains(out.String(), "saved sandbox.idf_path:") {
+		t.Fatalf("install output missing persisted path notice:\n%s", out.String())
+	}
+
+	root = NewRootCommand(Dependencies{RootDir: rootDir})
+	root.SetArgs([]string{"--plain", "sandbox", "qemu", "doctor"})
+	out.Reset()
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("qemu doctor returned error after install: %v\n%s", err, out.String())
+	}
+	for _, want := range []string{"source", "config", idfAbs} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("doctor output missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
 func TestQEMUInstallDryRunPrintsCommandsWithoutConfirmation(t *testing.T) {
 	rootDir := t.TempDir()
 	root := NewRootCommand(Dependencies{RootDir: rootDir})

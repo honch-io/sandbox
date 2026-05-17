@@ -64,6 +64,7 @@ var configSections = []configSection{
 			{Key: "sandbox.clickhouse_database", Name: "clickhouse_database", TypeLabel: "string", Kind: configFieldString, Path: []string{"sandbox", "clickhouse_database"}, Read: func(cfg config.Config) any { return cfg.Sandbox.ClickHouseDatabase }},
 			{Key: "sandbox.state_dir", Name: "state_dir", TypeLabel: "path", Kind: configFieldString, Path: []string{"sandbox", "state_dir"}, Read: func(cfg config.Config) any { return cfg.Sandbox.StateDir }},
 			{Key: "sandbox.endpoint_url", Name: "endpoint_url", TypeLabel: "url", Kind: configFieldString, Path: []string{"sandbox", "endpoint_url"}, Read: func(cfg config.Config) any { return cfg.Sandbox.EndpointURL }},
+			{Key: "sandbox.idf_path", Name: "idf_path", TypeLabel: "path", Kind: configFieldString, Path: []string{"sandbox", "idf_path"}, Read: func(cfg config.Config) any { return cfg.Sandbox.IDFPath }},
 		},
 	},
 }

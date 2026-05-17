@@ -259,6 +259,24 @@ func TestSandboxStopIsNoopWhenNotRunning(t *testing.T) {
 	}
 }
 
+func TestSandboxStatusMarksProxyInactiveWithoutSession(t *testing.T) {
+	root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
+	root.SetArgs([]string{"--plain", "sandbox", "status"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("status returned error: %v\n%s", err, out.String())
+	}
+	combined := out.String()
+	for _, want := range []string{"proxy health", "down: inactive sandbox"} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("status did not report inactive proxy health %q:\n%s", want, combined)
+		}
+	}
+}
+
 func TestSandboxStopClearsRunnerOnlySession(t *testing.T) {
 	rootDir := t.TempDir()
 	manager := session.NewManager(filepath.Join(rootDir, ".honch-sandbox", "session.json"))

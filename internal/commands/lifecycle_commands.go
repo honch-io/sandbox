@@ -198,7 +198,8 @@ func newStatusCommand(deps Dependencies) *cobra.Command {
 				return err
 			}
 			sessionRows := []ui.Row{}
-			if state, err := manager.Load(); err == nil {
+			state, stateErr := manager.Load()
+			if stateErr == nil {
 				sessionRows = append(sessionRows,
 					ui.Row{Key: "session", Value: state.ID},
 					ui.Row{Key: "runner", Value: valueOr(state.Runner.Adapter, "none")},
@@ -223,7 +224,7 @@ func newStatusCommand(deps Dependencies) *cobra.Command {
 			_, _ = fmt.Fprint(cmd.OutOrStdout(), ui.FormatSections("Honch sandbox", []ui.Section{
 				{Name: "session", Rows: sessionRows},
 				{Name: "repos", Rows: repoRows},
-				{Name: "services", Rows: serviceHealthRows(cmd.Context(), cfg)},
+				{Name: "services", Rows: serviceHealthRows(cmd.Context(), cfg, state, stateErr)},
 				{Name: "ports", Rows: portRows},
 			}))
 			return nil
@@ -231,7 +232,7 @@ func newStatusCommand(deps Dependencies) *cobra.Command {
 	}
 }
 
-func serviceHealthRows(ctx context.Context, cfg config.Config) []ui.Row {
+func serviceHealthRows(ctx context.Context, cfg config.Config, state session.State, stateErr error) []ui.Row {
 	checkTimeout := 750 * time.Millisecond
 	return []ui.Row{
 		{Key: "postgres", Value: health.TCPStatus(ctx, "127.0.0.1:5432", checkTimeout)},
@@ -240,8 +241,28 @@ func serviceHealthRows(ctx context.Context, cfg config.Config) []ui.Row {
 		{Key: "clickhouse", Value: health.ClickHouseStatus(ctx, fmt.Sprintf("127.0.0.1:%d", cfg.Ports.ClickHouse), checkTimeout)},
 		{Key: "capture health", Value: health.HTTPStatus(ctx, fmt.Sprintf("http://127.0.0.1:%d/health", cfg.Ports.Capture), checkTimeout)},
 		{Key: "worker health", Value: health.HTTPStatus(ctx, fmt.Sprintf("http://127.0.0.1:%d/", cfg.Ports.Worker), checkTimeout)},
-		{Key: "proxy health", Value: health.TCPStatus(ctx, fmt.Sprintf("127.0.0.1:%d", cfg.Ports.Proxy), checkTimeout)},
+		proxyHealthRow(ctx, cfg, state, stateErr, checkTimeout),
 	}
+}
+
+func proxyHealthRow(ctx context.Context, cfg config.Config, state session.State, stateErr error, checkTimeout time.Duration) ui.Row {
+	if stateErr != nil || !state.Stack.Running {
+		return ui.Row{Key: "proxy health", Value: "down: inactive sandbox"}
+	}
+	if state.Proxy.Mode != proxy.ModeOnline.String() {
+		return ui.Row{Key: "proxy health", Value: "down: proxy mode " + valueOr(state.Proxy.Mode, "unknown")}
+	}
+	status := health.TCPStatus(ctx, fmt.Sprintf("127.0.0.1:%d", cfg.Ports.Proxy), checkTimeout)
+	if status != "up" {
+		return ui.Row{Key: "proxy health", Value: status}
+	}
+	if state.Proxy.PID > 0 && processAlive(state.Proxy.PID) && processCommandContains(state.Proxy.PID, "sandbox proxy-serve") {
+		return ui.Row{Key: "proxy health", Value: "up"}
+	}
+	if state.Proxy.PID > 0 {
+		return ui.Row{Key: "proxy health", Value: "down: sandbox proxy process not running"}
+	}
+	return ui.Row{Key: "proxy health", Value: "down: sandbox proxy is not tracked"}
 }
 
 func newUpdateCommand(deps Dependencies) *cobra.Command {

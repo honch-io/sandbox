@@ -38,6 +38,7 @@ type SandboxConfig struct {
 	ClickHouseDatabase string `mapstructure:"clickhouse_database"`
 	EndpointURL        string `mapstructure:"endpoint_url"`
 	StateDir           string `mapstructure:"state_dir"`
+	IDFPath            string `mapstructure:"idf_path"`
 }
 
 type StackConfig struct {

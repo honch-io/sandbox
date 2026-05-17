@@ -88,7 +88,8 @@ Use `./honch sandbox flags` to inspect command-specific flags without opening
 each subcommand help screen.
 Use `./honch sandbox config list` to inspect the resolved values, `set` to
 change a single key, `edit` to open `.honch-sandbox.yaml` in your editor, and
-`init` to write a starter override file.
+`init` to write a starter override file. Custom ESP-IDF checkouts are stored
+in `sandbox.idf_path`.
 
 ## Working The Loop
 
@@ -172,6 +173,10 @@ Use this path when changing the ESP-IDF SDK or shared embedded behavior. It
 builds the firmware from `harnesses/esp-idf`, links the local
 `esp-idf/honch` component, boots it in QEMU, and drives the firmware over UART
 with the same JSON control commands.
+
+If you pass `--idf-path`, Honch stores the resolved checkout path in
+`sandbox.idf_path` so later `qemu doctor` and `run esp-idf` commands use the
+same toolchain without requiring `IDF_PATH` to be exported again.
 
 ```sh
 go build -o honch ./cmd/honch

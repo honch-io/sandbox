@@ -68,13 +68,14 @@ func newQEMUInstallCommand(deps Dependencies) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if idfPath == "" {
-				idfPath = managedIDFPath(root, cfg)
+			resolvedIDFPath, err := resolveInstallIDFPath(root, cfg, idfPath)
+			if err != nil {
+				return err
 			}
-			plan := newQEMUInstallPlan(idfPath, ref)
+			plan := newQEMUInstallPlan(resolvedIDFPath, ref)
 			_, _ = fmt.Fprint(cmd.OutOrStdout(), ui.FormatSections("Install ESP-IDF QEMU", []ui.Section{
 				{Rows: []ui.Row{
-					{Key: "idf path", Value: idfPath},
+					{Key: "idf path", Value: resolvedIDFPath},
 					{Key: "ref", Value: ref},
 					{Key: "qemu tools", Value: "qemu-xtensa qemu-riscv32"},
 				}},
@@ -92,7 +93,14 @@ func newQEMUInstallCommand(deps Dependencies) *cobra.Command {
 					return fmt.Errorf("install cancelled")
 				}
 			}
-			return runQEMUInstallPlan(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), plan)
+			if err := runQEMUInstallPlan(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), plan); err != nil {
+				return err
+			}
+			if err := saveQEMUInstallPath(root, cfg, resolvedIDFPath); err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "saved sandbox.idf_path: %s\n", resolvedIDFPath)
+			return nil
 		},
 	}
 	cmd.Flags().StringVar(&idfPath, "idf-path", "", "ESP-IDF checkout path to create or reuse")
@@ -157,15 +165,13 @@ func (s qemuStatus) Sections() []ui.Section {
 
 func resolveIDFPath(root string, cfg config.Config) (string, string) {
 	if path := os.Getenv("IDF_PATH"); path != "" {
-		if validIDFPath(path) {
-			return path, "env"
-		}
+		return resolveSandboxPath(root, path), "env"
+	}
+	if path := cfg.Sandbox.IDFPath; path != "" {
+		return resolveSandboxPath(root, path), "config"
 	}
 	managed := managedIDFPath(root, cfg)
-	if validIDFPath(managed) {
-		return managed, "managed"
-	}
-	return "", ""
+	return managed, "managed"
 }
 
 func validIDFPath(path string) bool {
@@ -174,6 +180,28 @@ func validIDFPath(path string) bool {
 
 func managedIDFPath(root string, cfg config.Config) string {
 	return filepath.Join(root, cfg.Sandbox.StateDir, "toolchains", "esp-idf")
+}
+
+func resolveSandboxPath(root string, path string) string {
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	return filepath.Clean(filepath.Join(root, path))
+}
+
+func resolveInstallIDFPath(root string, cfg config.Config, idfPath string) (string, error) {
+	if idfPath == "" {
+		return managedIDFPath(root, cfg), nil
+	}
+	return filepath.Abs(idfPath)
+}
+
+func saveQEMUInstallPath(root string, cfg config.Config, idfPath string) error {
+	field, ok := configFieldByKey["sandbox.idf_path"]
+	if !ok {
+		return fmt.Errorf("sandbox.idf_path config field is unavailable")
+	}
+	return setConfigValue(root, cfg, field, idfPath)
 }
 
 func commandStatus(name string) string {
@@ -286,7 +314,7 @@ func runQEMUInstallPlan(ctx context.Context, stdout io.Writer, stderr io.Writer,
 		return err
 	}
 	_, _ = fmt.Fprintf(stdout, "\n%s\n", ui.Heading("ESP-IDF QEMU tools installed"))
-	_, _ = fmt.Fprintf(stdout, "managed idf path: %s\n", plan.IDFPath)
+	_, _ = fmt.Fprintf(stdout, "installed idf path: %s\n", plan.IDFPath)
 	_, _ = fmt.Fprintln(stdout, ui.Success("ESP-IDF QEMU tools have been installed"))
 	_, _ = fmt.Fprintln(stdout, "next: honch sandbox qemu doctor")
 	return nil
