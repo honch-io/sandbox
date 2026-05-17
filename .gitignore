@@ -23,6 +23,7 @@ coverage.out
 
 # Local sandbox state
 .honch-sandbox/
+.honch-sandbox.yaml
 
 # Logs and temp files
 *.log
