@@ -139,24 +139,25 @@ func newStopCommand(deps Dependencies) *cobra.Command {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Success("sandbox is not running"))
 				return nil
 			}
-			if state.Proxy.PID > 0 {
-				_ = killProcess(state.Proxy.PID)
-			}
-			_ = os.Remove(proxyPIDPath(root, cfg))
-			if state.Runner.PID > 0 && state.Runner.Detached {
-				_ = killProcess(state.Runner.PID)
-			}
-			_ = killSandboxRunnerProcesses(root, cfg)
-			if state.Stack.Running {
-				if err := stack.New(root).Stop(cmd.Context(), cfg); err != nil {
+			return ui.WithSpinnerDone(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), "stopping sandbox", "sandbox has been stopped", func(ctx context.Context) error {
+				if state.Proxy.PID > 0 {
+					_ = killProcess(state.Proxy.PID)
+				}
+				_ = os.Remove(proxyPIDPath(root, cfg))
+				if state.Runner.PID > 0 && state.Runner.Detached {
+					_ = killProcess(state.Runner.PID)
+				}
+				_ = killSandboxRunnerProcesses(root, cfg)
+				if state.Stack.Running {
+					if err := stack.New(root).Stop(ctx, cfg); err != nil {
+						return err
+					}
+				}
+				if err := manager.Clear(); err != nil {
 					return err
 				}
-			}
-			if err := manager.Clear(); err != nil {
-				return err
-			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Success("sandbox has been stopped"))
-			return nil
+				return nil
+			})
 		},
 	}
 }
