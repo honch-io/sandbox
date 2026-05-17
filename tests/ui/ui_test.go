@@ -74,21 +74,38 @@ func TestFormatErrorUsesRows(t *testing.T) {
 	}
 }
 
-func TestFormatSectionsTruncatesLongValuesToTerminalWidth(t *testing.T) {
+func TestFormatSectionsWrappedUsesTwoLineRowsForPathLikeEntries(t *testing.T) {
 	ui.SetPlain(false)
-	t.Setenv("COLUMNS", "60")
-
-	fullPath := "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3"
-	out := ui.FormatKeyValues("Honch sandbox", []ui.Row{
-		{Key: "python", Value: fullPath},
+	fullPath := "/usr/bin/git"
+	out := ui.FormatSectionsWrapped("Honch sandbox", []ui.Section{
+		{
+			Name: "host",
+			Rows: []ui.Row{
+				{Key: "git", Value: fullPath},
+				{Key: "worker", Value: "dirty"},
+			},
+		},
+		{
+			Name: "images",
+			Rows: []ui.Row{
+				{Key: "postgres:16-alpine", Value: "missing"},
+			},
+		},
 	})
 	plain := ui.StripANSI(out)
 
-	if strings.Contains(plain, fullPath) {
-		t.Fatalf("value was not truncated:\n%s", plain)
-	}
-	if !strings.Contains(plain, "...") || !strings.Contains(plain, "python3") {
-		t.Fatalf("truncated value did not preserve a useful suffix:\n%s", plain)
+	for _, want := range []string{
+		"git",
+		fullPath,
+		"\n        ›   ",
+		"worker",
+		"›   dirty",
+		"postgres:16-alpine",
+		"›   missing",
+	} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("wrapped output missing %q:\n%s", want, plain)
+		}
 	}
 }
 
@@ -137,6 +154,16 @@ func TestFormatGroupedCommandHelpUsesSectionsAndArrows(t *testing.T) {
 		"honch sandbox",
 		"Run the Honch SDK E2E sandbox",
 		"start -> run c-core --detach -> track",
+		[]ui.Section{
+			{
+				Name: "Global",
+				Rows: []ui.Row{{Key: "--plain", Value: "disable styled output"}},
+			},
+			{
+				Name: "Harness",
+				Rows: []ui.Row{{Key: "run --detach", Value: "run harness in the background"}},
+			},
+		},
 		[]ui.CommandSection{
 			{
 				Name: "Stack",
@@ -153,6 +180,11 @@ func TestFormatGroupedCommandHelpUsesSectionsAndArrows(t *testing.T) {
 		"  honch sandbox",
 		"    Flow",
 		"      start -> run c-core --detach -> track",
+		"    Flags",
+		"      Global",
+		"--plain ›   disable styled output",
+		"      Harness",
+		"run --detach ›   run harness in the background",
 		"    Stack",
 		"      start  ›   Start the local Honch stack",
 		"      stop   ›   Stop sandbox services",

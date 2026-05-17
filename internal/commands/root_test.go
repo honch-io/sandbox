@@ -67,6 +67,11 @@ func TestRootHelpUsesSandboxHelpFormat(t *testing.T) {
 		"  honch sandbox",
 		"    Flow",
 		"start -> run esp-idf --detach -> track -> flush -> events list -> stop",
+		"    Flags",
+		"      Global",
+		"--plain",
+		"      Setup",
+		"setup --dry-run",
 		"    Stack",
 		"      start    ›   Start the local Honch stack",
 		"    Harness",
@@ -112,6 +117,9 @@ func TestLeafHelpShowsUsageAndFlags(t *testing.T) {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 	help := ui.StripANSI(out.String())
+	if !strings.Contains(help, "--plain") {
+		t.Fatalf("leaf help missing inherited plain flag:\n%s", help)
+	}
 	for _, want := range []string{"Usage", "honch sandbox network --online|--offline|--server-error", "Flags", "--offline", "--online", "--server-error"} {
 		if !strings.Contains(help, want) {
 			t.Fatalf("leaf help missing %q:\n%s", want, help)
@@ -665,6 +673,9 @@ func TestRootHelpHidesGeneratedHelpAndCompletion(t *testing.T) {
 	}
 	for _, want := range []string{
 		"  honch",
+		"    Flags",
+		"      Global",
+		"--plain",
 		"    Tools",
 		"      sandbox ›   Run the Honch SDK E2E sandbox",
 	} {

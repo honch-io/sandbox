@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"golang.org/x/sys/unix"
 )
 
 var (
@@ -107,7 +105,6 @@ func FormatSections(title string, sections []Section) string {
 	if width < 18 {
 		width = 18
 	}
-	columns := detectTerminalColumns()
 
 	var b strings.Builder
 	b.WriteString("\n")
@@ -121,14 +118,12 @@ func FormatSections(title string, sections []Section) string {
 			b.WriteString("\n")
 		}
 		indent := "     "
-		indentWidth := 5
 		if section.Name != "" {
 			indent = "       "
-			indentWidth = 7
 		}
 		for _, row := range section.Rows {
 			b.WriteString(indent)
-			b.WriteString(formatRowLimited(row.Key, row.Value, width, valueLimit(columns, indentWidth, width)))
+			b.WriteString(formatRow(row.Key, row.Value, width))
 			b.WriteString("\n")
 		}
 		if section.Name != "" && i < len(sections)-1 {
@@ -139,19 +134,73 @@ func FormatSections(title string, sections []Section) string {
 }
 
 func FormatRow(key string, rowValue any, width int) string {
-	return formatRowLimited(key, rowValue, width, 0)
+	return formatRow(key, rowValue, width)
 }
 
-func formatRowLimited(key string, rowValue any, width int, maxValueWidth int) string {
+func formatRow(key string, rowValue any, width int) string {
 	valueText := fmt.Sprint(rowValue)
-	if maxValueWidth > 0 {
-		valueText = truncateText(valueText, maxValueWidth)
-	}
 	return fmt.Sprintf("%s %s   %s",
 		render(label, fmt.Sprintf("%-*s", width, key)),
 		render(arrow, "›"),
 		render(valueStyle(rowValue), valueText),
 	)
+}
+
+// FormatSectionsWrapped keeps doctor rows readable by breaking path-like
+// entries onto a second line while leaving short status rows inline.
+func FormatSectionsWrapped(title string, sections []Section) string {
+	inlineWidth := 0
+	for _, section := range sections {
+		for _, row := range section.Rows {
+			if isDoctorPathRow(row) {
+				continue
+			}
+			if len(row.Key) > inlineWidth {
+				inlineWidth = len(row.Key)
+			}
+		}
+	}
+	if inlineWidth < 7 {
+		inlineWidth = 7
+	}
+
+	var b strings.Builder
+	b.WriteString("\n")
+	b.WriteString("  ")
+	b.WriteString(Heading(title))
+	b.WriteString("\n\n")
+	for i, section := range sections {
+		if section.Name != "" {
+			b.WriteString("     ")
+			b.WriteString(render(label, section.Name))
+			b.WriteString("\n")
+		}
+		indent := "     "
+		if section.Name != "" {
+			indent = "       "
+		}
+		for _, row := range section.Rows {
+			if isDoctorPathRow(row) {
+				b.WriteString(indent)
+				b.WriteString(render(label, row.Key))
+				b.WriteString("\n")
+				b.WriteString(indent)
+				b.WriteString(" ")
+				b.WriteString(render(arrow, "›"))
+				b.WriteString("   ")
+				b.WriteString(render(valueStyle(row.Value), fmt.Sprint(row.Value)))
+				b.WriteString("\n")
+				continue
+			}
+			b.WriteString(indent)
+			b.WriteString(formatRow(row.Key, row.Value, inlineWidth))
+			b.WriteString("\n")
+		}
+		if section.Name != "" && i < len(sections)-1 {
+			b.WriteString("\n")
+		}
+	}
+	return b.String()
 }
 
 func FormatError(message string, rows []Row) string {
@@ -168,10 +217,9 @@ func FormatError(message string, rows []Row) string {
 			width = len(row.Key)
 		}
 	}
-	columns := detectTerminalColumns()
 	for _, row := range rows {
 		b.WriteString("     ")
-		b.WriteString(formatRowLimited(row.Key, row.Value, width, valueLimit(columns, 5, width)))
+		b.WriteString(formatRow(row.Key, row.Value, width))
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
@@ -233,7 +281,7 @@ func FormatCommandHelp(title string, description string, usage string, flags []R
 
 // FormatGroupedCommandHelp keeps top-level command menus compact without
 // losing the short descriptions contributors need while exploring the CLI.
-func FormatGroupedCommandHelp(title string, description string, flow string, sections []CommandSection) string {
+func FormatGroupedCommandHelp(title string, description string, flow string, flagSections []Section, sections []CommandSection) string {
 	var b strings.Builder
 	b.WriteString("\n")
 	b.WriteString("  ")
@@ -251,6 +299,43 @@ func FormatGroupedCommandHelp(title string, description string, flow string, sec
 		b.WriteString("      ")
 		b.WriteString(render(helpText, flow))
 		b.WriteString("\n\n")
+	}
+	if len(flagSections) > 0 {
+		b.WriteString("    ")
+		b.WriteString(render(label, "Flags"))
+		b.WriteString("\n")
+		for i, section := range flagSections {
+			if len(section.Rows) == 0 {
+				continue
+			}
+			b.WriteString("      ")
+			if section.Name != "" {
+				b.WriteString(render(label, section.Name))
+				b.WriteString("\n")
+			}
+			width := 0
+			for _, flag := range section.Rows {
+				if len(flag.Key) > width {
+					width = len(flag.Key)
+				}
+			}
+			if width < 7 {
+				width = 7
+			}
+			indent := "        "
+			if section.Name == "" {
+				indent = "      "
+			}
+			for _, flag := range section.Rows {
+				b.WriteString(indent)
+				b.WriteString(FormatRow(flag.Key, flag.Value, width))
+				b.WriteString("\n")
+			}
+			if i < len(flagSections)-1 {
+				b.WriteString("\n")
+			}
+		}
+		b.WriteString("\n")
 	}
 	width := commandNameWidth(sections)
 	for i, section := range sections {
@@ -308,53 +393,22 @@ func render(style lipgloss.Style, text string) string {
 	return style.Render(text)
 }
 
-func detectTerminalColumns() int {
-	if columns := os.Getenv("COLUMNS"); columns != "" {
-		if width, err := strconv.Atoi(columns); err == nil && width > 0 {
-			return width
-		}
-	}
-	for _, file := range []*os.File{os.Stdout, os.Stderr} {
-		if width := fileColumns(file); width > 0 {
-			return width
-		}
-	}
-	return 0
+func isDoctorPathRow(row Row) bool {
+	return looksLikeDoctorPath(fmt.Sprint(row.Key)) || looksLikeDoctorPath(fmt.Sprint(row.Value))
 }
 
-func fileColumns(file *os.File) int {
-	if file == nil {
-		return 0
+func looksLikeDoctorPath(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return false
 	}
-	size, err := unix.IoctlGetWinsize(int(file.Fd()), unix.TIOCGWINSZ)
-	if err != nil || size == nil || size.Col == 0 {
-		return 0
+	if strings.Contains(text, "/") {
+		return true
 	}
-	return int(size.Col)
-}
-
-func valueLimit(columns int, indentWidth int, keyWidth int) int {
-	if columns <= 0 {
-		return 0
+	if strings.HasPrefix(text, "~") {
+		return true
 	}
-	limit := columns - indentWidth - keyWidth - 5
-	if limit <= 0 {
-		return 0
-	}
-	return limit
-}
-
-func truncateText(text string, max int) string {
-	runes := []rune(text)
-	if len(runes) <= max {
-		return text
-	}
-	if max <= 3 {
-		return strings.Repeat(".", max)
-	}
-	left := (max - 3) / 2
-	right := max - 3 - left
-	return string(runes[:left]) + "..." + string(runes[len(runes)-right:])
+	return strings.Contains(text, ":") && !strings.ContainsAny(text, " \t") && !strings.HasSuffix(text, ":")
 }
 
 func valueStyle(rowValue any) lipgloss.Style {
