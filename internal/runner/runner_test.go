@@ -212,7 +212,7 @@ func TestEspIDFRunnerRunStartsQEMUAndConnectsSerial(t *testing.T) {
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("HONCH_SANDBOX_QEMU_SERIAL_ADDR", "127.0.0.1:5555")
-	stubQEMUSerial(t, []string{"ready\n"}, 500*time.Millisecond)
+	stubQEMUSerial(t, []string{"ready\n"}, 3*time.Second)
 
 	r := EspIDFRunner{RepoRoot: repoRoot, StateDir: filepath.Join(repoRoot, ".honch-sandbox")}
 	build := EspIDFBuild{
@@ -310,6 +310,51 @@ func TestEspIDFRunnerRunUsesConfiguredAdapterSettings(t *testing.T) {
 			t.Fatalf("runner log missing %q:\n%s", want, log)
 		}
 	}
+}
+
+func TestEspIDFRunnerRunFailsWhenSerialClosesAfterReady(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake qemu script is POSIX-only")
+	}
+	repoRoot := t.TempDir()
+	projectDir := filepath.Join(repoRoot, "harnesses", "esp-idf")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(repoRoot, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	python := filepath.Join(binDir, "python")
+	if err := os.WriteFile(python, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	qemuPIDPath := filepath.Join(repoRoot, "qemu.pid")
+	qemu := filepath.Join(binDir, "qemu-system-xtensa")
+	if err := os.WriteFile(qemu, []byte("#!/bin/sh\necho $$ > "+qemuPIDPath+"\nsleep 2\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("HONCH_SANDBOX_QEMU_SERIAL_ADDR", "127.0.0.1:5555")
+	stubQEMUSerial(t, []string{"ready\n"}, 1500*time.Millisecond)
+
+	r := EspIDFRunner{RepoRoot: repoRoot, StateDir: filepath.Join(repoRoot, ".honch-sandbox")}
+	build := EspIDFBuild{
+		ProjectDir: projectDir,
+		BuildDir:   filepath.Join(repoRoot, ".honch-sandbox", "build", "esp-idf"),
+	}
+	if err := os.MkdirAll(build.BuildDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := r.Run(context.Background(), build, "", io.Discard, io.Discard)
+	if err == nil {
+		t.Fatal("Run succeeded after serial closed post-ready")
+	}
+	if !strings.Contains(err.Error(), "serial closed after firmware ready") {
+		t.Fatalf("error did not explain post-ready serial close: %v", err)
+	}
+	pid := eventuallyReadPID(t, time.Second, qemuPIDPath)
+	eventuallyNoProcess(t, time.Second, pid)
 }
 
 func TestEspIDFRunnerRunFailsWhenFirmwareNeverReportsReady(t *testing.T) {

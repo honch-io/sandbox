@@ -170,6 +170,9 @@ func (r EspIDFRunner) RunQEMU(ctx context.Context, build EspIDFBuild, controlPat
 		return err
 	case err := <-copyDone:
 		killAndWaitDone(qemu, waitDone)
+		if err == nil {
+			return fmt.Errorf("QEMU serial closed after firmware ready")
+		}
 		return err
 	}
 }
