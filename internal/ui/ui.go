@@ -1,12 +1,15 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/sys/unix"
 )
 
 var (
@@ -20,6 +23,15 @@ var (
 	arrow    = lipgloss.NewStyle().Foreground(lipgloss.Color("#4ec9d8")).Bold(true)
 	plain    = os.Getenv("NO_COLOR") != ""
 )
+
+type SilentError interface {
+	error
+	Silent() bool
+}
+
+type silentError struct {
+	error
+}
 
 type Row struct {
 	Key   string
@@ -47,6 +59,19 @@ func SetPlain(enabled bool) {
 
 func IsPlain() bool {
 	return plain
+}
+
+func NewSilentError(message string) error {
+	return silentError{error: errors.New(message)}
+}
+
+func (silentError) Silent() bool {
+	return true
+}
+
+func IsSilentError(err error) bool {
+	var target SilentError
+	return errors.As(err, &target)
 }
 
 func Heading(text string) string {
@@ -82,6 +107,7 @@ func FormatSections(title string, sections []Section) string {
 	if width < 18 {
 		width = 18
 	}
+	columns := detectTerminalColumns()
 
 	var b strings.Builder
 	b.WriteString("\n")
@@ -94,13 +120,15 @@ func FormatSections(title string, sections []Section) string {
 			b.WriteString(render(label, section.Name))
 			b.WriteString("\n")
 		}
+		indent := "     "
+		indentWidth := 5
+		if section.Name != "" {
+			indent = "       "
+			indentWidth = 7
+		}
 		for _, row := range section.Rows {
-			indent := "     "
-			if section.Name != "" {
-				indent = "       "
-			}
 			b.WriteString(indent)
-			b.WriteString(FormatRow(row.Key, row.Value, width))
+			b.WriteString(formatRowLimited(row.Key, row.Value, width, valueLimit(columns, indentWidth, width)))
 			b.WriteString("\n")
 		}
 		if section.Name != "" && i < len(sections)-1 {
@@ -111,10 +139,18 @@ func FormatSections(title string, sections []Section) string {
 }
 
 func FormatRow(key string, rowValue any, width int) string {
+	return formatRowLimited(key, rowValue, width, 0)
+}
+
+func formatRowLimited(key string, rowValue any, width int, maxValueWidth int) string {
+	valueText := fmt.Sprint(rowValue)
+	if maxValueWidth > 0 {
+		valueText = truncateText(valueText, maxValueWidth)
+	}
 	return fmt.Sprintf("%s %s   %s",
 		render(label, fmt.Sprintf("%-*s", width, key)),
 		render(arrow, "›"),
-		render(valueStyle(rowValue), fmt.Sprint(rowValue)),
+		render(valueStyle(rowValue), valueText),
 	)
 }
 
@@ -132,9 +168,10 @@ func FormatError(message string, rows []Row) string {
 			width = len(row.Key)
 		}
 	}
+	columns := detectTerminalColumns()
 	for _, row := range rows {
 		b.WriteString("     ")
-		b.WriteString(FormatRow(row.Key, row.Value, width))
+		b.WriteString(formatRowLimited(row.Key, row.Value, width, valueLimit(columns, 5, width)))
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
@@ -269,6 +306,55 @@ func render(style lipgloss.Style, text string) string {
 		return text
 	}
 	return style.Render(text)
+}
+
+func detectTerminalColumns() int {
+	if columns := os.Getenv("COLUMNS"); columns != "" {
+		if width, err := strconv.Atoi(columns); err == nil && width > 0 {
+			return width
+		}
+	}
+	for _, file := range []*os.File{os.Stdout, os.Stderr} {
+		if width := fileColumns(file); width > 0 {
+			return width
+		}
+	}
+	return 0
+}
+
+func fileColumns(file *os.File) int {
+	if file == nil {
+		return 0
+	}
+	size, err := unix.IoctlGetWinsize(int(file.Fd()), unix.TIOCGWINSZ)
+	if err != nil || size == nil || size.Col == 0 {
+		return 0
+	}
+	return int(size.Col)
+}
+
+func valueLimit(columns int, indentWidth int, keyWidth int) int {
+	if columns <= 0 {
+		return 0
+	}
+	limit := columns - indentWidth - keyWidth - 5
+	if limit <= 0 {
+		return 0
+	}
+	return limit
+}
+
+func truncateText(text string, max int) string {
+	runes := []rune(text)
+	if len(runes) <= max {
+		return text
+	}
+	if max <= 3 {
+		return strings.Repeat(".", max)
+	}
+	left := (max - 3) / 2
+	right := max - 3 - left
+	return string(runes[:left]) + "..." + string(runes[len(runes)-right:])
 }
 
 func valueStyle(rowValue any) lipgloss.Style {

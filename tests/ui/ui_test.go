@@ -1,13 +1,15 @@
-package ui
+package ui_test
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/honch/sdk/tools/sandbox/internal/ui"
 )
 
 func TestFormatKeyValuesUsesIndentedArrowLayout(t *testing.T) {
-	SetPlain(false)
-	out := FormatKeyValues("Honch sandbox", []Row{
+	ui.SetPlain(false)
+	out := ui.FormatKeyValues("Honch sandbox", []ui.Row{
 		{Key: "session", Value: "inactive"},
 		{Key: "clickhouse port", Value: 8123},
 	})
@@ -17,30 +19,30 @@ func TestFormatKeyValuesUsesIndentedArrowLayout(t *testing.T) {
 		"     session            ›   inactive",
 		"     clickhouse port    ›   8123",
 	} {
-		if !strings.Contains(StripANSI(out), want) {
-			t.Fatalf("formatted output missing %q:\n%s", want, StripANSI(out))
+		if !strings.Contains(ui.StripANSI(out), want) {
+			t.Fatalf("formatted output missing %q:\n%s", want, ui.StripANSI(out))
 		}
 	}
 }
 
 func TestFormatSectionsGroupsRows(t *testing.T) {
-	SetPlain(false)
-	out := FormatSections("Honch sandbox", []Section{
+	ui.SetPlain(false)
+	out := ui.FormatSections("Honch sandbox", []ui.Section{
 		{
 			Name: "session",
-			Rows: []Row{
+			Rows: []ui.Row{
 				{Key: "session", Value: "inactive"},
 			},
 		},
 		{
 			Name: "ports",
-			Rows: []Row{
+			Rows: []ui.Row{
 				{Key: "proxy port", Value: 18080},
 			},
 		},
 	})
 
-	plain := StripANSI(out)
+	plain := ui.StripANSI(out)
 	for _, want := range []string{
 		"     session\n",
 		"       session            ›   inactive",
@@ -54,13 +56,13 @@ func TestFormatSectionsGroupsRows(t *testing.T) {
 }
 
 func TestFormatErrorUsesRows(t *testing.T) {
-	SetPlain(false)
-	out := FormatError("missing event name", []Row{
+	ui.SetPlain(false)
+	out := ui.FormatError("missing event name", []ui.Row{
 		{Key: "required", Value: "honch sandbox track <event>"},
 		{Key: "example", Value: "honch sandbox track camera.motion"},
 	})
 
-	plain := StripANSI(out)
+	plain := ui.StripANSI(out)
 	for _, want := range []string{
 		"missing event name",
 		"     required ›   honch sandbox track <event>",
@@ -72,23 +74,51 @@ func TestFormatErrorUsesRows(t *testing.T) {
 	}
 }
 
-func TestSetPlainDisablesANSI(t *testing.T) {
-	SetPlain(true)
-	t.Cleanup(func() { SetPlain(false) })
+func TestFormatSectionsTruncatesLongValuesToTerminalWidth(t *testing.T) {
+	ui.SetPlain(false)
+	t.Setenv("COLUMNS", "60")
 
-	out := FormatKeyValues("Honch sandbox", []Row{{Key: "session", Value: "inactive"}})
-	if out != StripANSI(out) {
+	fullPath := "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3"
+	out := ui.FormatKeyValues("Honch sandbox", []ui.Row{
+		{Key: "python", Value: fullPath},
+	})
+	plain := ui.StripANSI(out)
+
+	if strings.Contains(plain, fullPath) {
+		t.Fatalf("value was not truncated:\n%s", plain)
+	}
+	if !strings.Contains(plain, "...") || !strings.Contains(plain, "python3") {
+		t.Fatalf("truncated value did not preserve a useful suffix:\n%s", plain)
+	}
+}
+
+func TestSilentErrorIsDetectable(t *testing.T) {
+	err := ui.NewSilentError("sandbox setup is incomplete")
+	if !ui.IsSilentError(err) {
+		t.Fatalf("silent error was not detectable: %T", err)
+	}
+	if err.Error() != "sandbox setup is incomplete" {
+		t.Fatalf("silent error changed message: %q", err.Error())
+	}
+}
+
+func TestSetPlainDisablesANSI(t *testing.T) {
+	ui.SetPlain(true)
+	t.Cleanup(func() { ui.SetPlain(false) })
+
+	out := ui.FormatKeyValues("Honch sandbox", []ui.Row{{Key: "session", Value: "inactive"}})
+	if out != ui.StripANSI(out) {
 		t.Fatalf("plain output included ANSI: %q", out)
 	}
 }
 
 func TestFormatCommandHelpShowsDescriptionsUnderCommands(t *testing.T) {
-	SetPlain(false)
-	out := FormatCommandHelp("honch sandbox", "Run the Honch SDK E2E sandbox", "", nil, []CommandRow{
+	ui.SetPlain(false)
+	out := ui.FormatCommandHelp("honch sandbox", "Run the Honch SDK E2E sandbox", "", nil, []ui.CommandRow{
 		{Name: "battery", Description: "Set the live harness battery level"},
 	})
 
-	plain := StripANSI(out)
+	plain := ui.StripANSI(out)
 	for _, want := range []string{
 		"  honch sandbox",
 		"    Run the Honch SDK E2E sandbox",
@@ -102,15 +132,15 @@ func TestFormatCommandHelpShowsDescriptionsUnderCommands(t *testing.T) {
 }
 
 func TestFormatGroupedCommandHelpUsesSectionsAndArrows(t *testing.T) {
-	SetPlain(false)
-	out := FormatGroupedCommandHelp(
+	ui.SetPlain(false)
+	out := ui.FormatGroupedCommandHelp(
 		"honch sandbox",
 		"Run the Honch SDK E2E sandbox",
 		"start -> run c-core --detach -> track",
-		[]CommandSection{
+		[]ui.CommandSection{
 			{
 				Name: "Stack",
-				Commands: []CommandRow{
+				Commands: []ui.CommandRow{
 					{Name: "start", Description: "Start the local Honch stack"},
 					{Name: "stop", Description: "Stop sandbox services"},
 				},
@@ -118,7 +148,7 @@ func TestFormatGroupedCommandHelpUsesSectionsAndArrows(t *testing.T) {
 		},
 	)
 
-	plain := StripANSI(out)
+	plain := ui.StripANSI(out)
 	for _, want := range []string{
 		"  honch sandbox",
 		"    Flow",
@@ -134,8 +164,8 @@ func TestFormatGroupedCommandHelpUsesSectionsAndArrows(t *testing.T) {
 }
 
 func TestFormatCommandHelpDoesNotBoldDescriptions(t *testing.T) {
-	SetPlain(false)
-	out := FormatCommandHelp("honch sandbox", "Run the Honch SDK E2E sandbox", "", nil, []CommandRow{
+	ui.SetPlain(false)
+	out := ui.FormatCommandHelp("honch sandbox", "Run the Honch SDK E2E sandbox", "", nil, []ui.CommandRow{
 		{Name: "battery", Description: "Set the live harness battery level"},
 	})
 
