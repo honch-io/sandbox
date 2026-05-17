@@ -1,9 +1,13 @@
 package commands
 
 import (
+	"context"
+	"io"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/honch/sdk/tools/sandbox/internal/config"
 	"github.com/honch/sdk/tools/sandbox/internal/ui"
 )
 
@@ -49,5 +53,38 @@ func TestProcessCommandExecutorRejectsInvalidCommands(t *testing.T) {
 	_, _, _, err := ui.ParseProcessCommand("battery nope")
 	if err == nil {
 		t.Fatal("expected invalid battery command to fail")
+	}
+}
+
+func TestTailLiveEventsUsesProvidedCursor(t *testing.T) {
+	orig := tailEventsFn
+	t.Cleanup(func() { tailEventsFn = orig })
+
+	wantSince := time.Unix(123, 0).UTC()
+	called := false
+	tailEventsFn = func(
+		ctx context.Context,
+		in io.Reader,
+		out io.Writer,
+		cfg config.Config,
+		client eventTailClient,
+		since time.Time,
+		interval time.Duration,
+	) error {
+		called = true
+		if !since.Equal(wantSince) {
+			t.Fatalf("since = %s, want %s", since, wantSince)
+		}
+		if interval != 2*time.Second {
+			t.Fatalf("interval = %s, want 2s", interval)
+		}
+		return nil
+	}
+
+	if err := tailLiveEvents(context.Background(), config.Config{}, io.Discard, wantSince); err != nil {
+		t.Fatalf("tailLiveEvents returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("tailEventsFn was not called")
 	}
 }

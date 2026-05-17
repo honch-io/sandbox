@@ -19,6 +19,7 @@ import (
 )
 
 var sendHarnessControlFn = sendHarnessControl
+var tailEventsFn = tailEvents
 
 func runAttachedProcessViewer(
 	ctx context.Context,
@@ -57,7 +58,7 @@ func runAttachedProcessViewer(
 		done <- err
 	}()
 	go func() {
-		if err := tailEvents(ctx, strings.NewReader(""), eventStream, cfg, events.Client{}, time.Now().UTC(), 2*time.Second); err != nil && ctx.Err() == nil {
+		if err := tailLiveEvents(ctx, cfg, eventStream, eventsSince); err != nil && ctx.Err() == nil {
 			program.Send(ui.EventAppendMsg{Text: fmt.Sprintf("\n  tail error: %v\n", err)})
 		}
 		eventStream.Flush()
@@ -79,6 +80,10 @@ func runAttachedProcessViewer(
 		return nil
 	}
 	return result.Err
+}
+
+func tailLiveEvents(ctx context.Context, cfg config.Config, out io.Writer, since time.Time) error {
+	return tailEventsFn(ctx, strings.NewReader(""), out, cfg, events.Client{}, since, 2*time.Second)
 }
 
 func newProcessCommandExecutor(controlPath string) ui.ProcessCommandFunc {
