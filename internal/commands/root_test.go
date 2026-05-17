@@ -33,6 +33,7 @@ func TestRootCommandExposesSandboxContract(t *testing.T) {
 		"status",
 		"doctor",
 		"setup",
+		"config",
 		"images",
 		"update",
 		"run",
@@ -75,6 +76,7 @@ func TestRootHelpUsesSandboxHelpFormat(t *testing.T) {
 		"    Setup",
 		"      doctor   ›   Check local prerequisites",
 		"      setup    ›   Install supported prerequisites",
+		"      config   ›   List and edit local config",
 		"      qemu     ›   Manage ESP-IDF QEMU tooling",
 	} {
 		if !strings.Contains(help, want) {
@@ -126,6 +128,7 @@ func TestNestedLeafHelpStaysOnRequestedCommand(t *testing.T) {
 		want string
 	}{
 		{name: "images list", args: []string{"sandbox", "images", "list", "--help"}, want: "honch sandbox images list"},
+		{name: "config list", args: []string{"sandbox", "config", "list", "--help"}, want: "honch sandbox config list"},
 		{name: "events list", args: []string{"sandbox", "events", "list", "--help"}, want: "honch sandbox events list"},
 		{name: "qemu doctor", args: []string{"sandbox", "qemu", "doctor", "--help"}, want: "honch sandbox qemu doctor"},
 		{name: "adapters list", args: []string{"sandbox", "adapters", "list", "--help"}, want: "honch sandbox adapters list"},

@@ -81,6 +81,10 @@ Defaults live in `config/default.yaml`:
 Override those values from the SDK repo root with `.honch-sandbox.yaml` when
 your local checkout is different.
 
+Use `./honch sandbox config list` to inspect the resolved values, `set` to
+change a single key, `edit` to open `.honch-sandbox.yaml` in your editor, and
+`init` to write a starter override file.
+
 ## Working The Loop
 
 For a normal contributor loop:
