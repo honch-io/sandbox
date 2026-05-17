@@ -30,6 +30,10 @@ go build -o honch ./cmd/honch
 ./honch sandbox stop
 ```
 
+If you build the CLI locally and want it on your `PATH`, run `./honch install`.
+It copies the current binary to `~/.local/bin/honch` after confirmation and
+reminds you to reload your shell.
+
 Use `./honch sandbox qemu doctor` and `./honch sandbox qemu install` when you
 plan to run the ESP-IDF adapter.
 

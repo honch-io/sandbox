@@ -10,6 +10,8 @@ release artifacts.
 - `honch sandbox setup` asks before running setup actions.
 - `honch sandbox qemu install --dry-run` prints ESP-IDF/QEMU install commands.
 - `honch sandbox qemu install` asks before downloading or installing tools.
+- `honch install` asks before copying the built binary to `~/.local/bin/honch`
+  and reminds you to reload your shell.
 
 `--yes` is allowed for scripted setup, but it must never be the default.
 

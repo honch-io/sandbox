@@ -669,6 +669,9 @@ func TestRootHelpHidesGeneratedHelpAndCompletion(t *testing.T) {
 			t.Fatalf("help included generated command %q:\n%s", hidden, help)
 		}
 	}
+	if strings.Contains(help, "install") {
+		t.Fatalf("help advertised hidden install command:\n%s", help)
+	}
 	for _, want := range []string{
 		"  honch",
 		"    Tools",
@@ -677,6 +680,67 @@ func TestRootHelpHidesGeneratedHelpAndCompletion(t *testing.T) {
 		if !strings.Contains(ui.StripANSI(help), want) {
 			t.Fatalf("help missing %q:\n%s", want, ui.StripANSI(help))
 		}
+	}
+}
+
+func TestHiddenInstallCommandCopiesBinaryToLocalBin(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	root := NewRootCommand(Dependencies{In: bytes.NewBufferString("y\n")})
+	root.SetArgs([]string{"--plain", "install"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("install returned error: %v\n%s", err, out.String())
+	}
+
+	target := filepath.Join(home, ".local", "bin", "honch")
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("installed binary missing: %v\n%s", err, out.String())
+	}
+	if info.IsDir() {
+		t.Fatalf("installed path is a directory: %s", target)
+	}
+	if info.Mode()&0o111 == 0 {
+		t.Fatalf("installed binary is not executable: %#o", info.Mode())
+	}
+	combined := out.String()
+	for _, want := range []string{
+		"Install honch to " + target + "? [y/N]",
+		"Installed honch to " + target,
+		"Reload your shell or run `hash -r`",
+	} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("install output missing %q:\n%s", want, combined)
+		}
+	}
+}
+
+func TestHiddenInstallCommandCanBeCancelled(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	root := NewRootCommand(Dependencies{In: bytes.NewBufferString("n\n")})
+	root.SetArgs([]string{"--plain", "install"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("install succeeded even though confirmation was declined")
+	}
+	if !strings.Contains(err.Error(), "install cancelled") {
+		t.Fatalf("install error did not explain cancellation: %v", err)
+	}
+
+	target := filepath.Join(home, ".local", "bin", "honch")
+	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+		t.Fatalf("install created a binary after cancellation, stat err: %v", statErr)
 	}
 }
 

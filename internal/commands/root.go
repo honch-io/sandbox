@@ -33,6 +33,7 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	root.SetOut(deps.Out)
 	root.SetErr(deps.Err)
 	root.AddCommand(newSandboxCommand(deps))
+	root.AddCommand(newInstallCommand())
 	installHelp(root)
 	return root
 }
