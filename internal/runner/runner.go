@@ -63,6 +63,8 @@ type EspIDFBuild struct {
 	BuildDir   string
 }
 
+var dialQEMUSerialFn = dialQEMUSerial
+
 type EspIDFRunner struct {
 	RepoRoot        string
 	StateDir        string
@@ -124,7 +126,7 @@ func (r EspIDFRunner) RunQEMU(ctx context.Context, build EspIDFBuild, controlPat
 	if err != nil {
 		return err
 	}
-	conn, err := dialQEMUSerial(ctx, qemuSerialAddr())
+	conn, err := dialQEMUSerialFn(ctx, qemuSerialAddr())
 	if err != nil {
 		killAndWait(qemu)
 		return err
