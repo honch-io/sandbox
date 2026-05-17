@@ -107,6 +107,12 @@ Examples:
 The tracked event should appear in `events list`. A low battery level also
 emits the SDK battery event, so seeing both rows is expected.
 
+## Releases
+
+Tagged builds publish downloadable `honch-<os>-<arch>` binaries to GitHub
+Releases. Use those when you want a ready-to-run CLI without building it
+locally.
+
 ## Harnesses
 
 Harnesses are developer-only and live under `tools/sandbox/harnesses`.
