@@ -36,6 +36,8 @@ run:
   tool: qemu-system-xtensa
 emulator:
   tool: qemu-system-xtensa
+  machine: esp32
+  network: user,model=open_eth
 controls:
   transport: newline-json-uart
 `)
@@ -51,7 +53,7 @@ controls:
 	if !ok {
 		t.Fatal("esp-idf adapter not found")
 	}
-	if esp.Kind != "qemu-esp32" || esp.Build.Target != "esp32" || esp.Run.Tool != "qemu-system-xtensa" {
+	if esp.Kind != "qemu-esp32" || esp.Build.Target != "esp32" || esp.Run.Tool != "qemu-system-xtensa" || esp.Emulator.Network != "user,model=open_eth" {
 		t.Fatalf("unexpected esp-idf config: %+v", esp)
 	}
 }

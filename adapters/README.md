@@ -40,7 +40,7 @@ run:
 emulator:
   tool: qemu-system-xtensa
   machine: esp32
-  network: open_eth
+  network: user,model=open_eth
 controls:
   transport: newline-json-uart
 events:
