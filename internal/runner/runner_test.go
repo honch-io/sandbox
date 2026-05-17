@@ -14,6 +14,29 @@ import (
 	"time"
 )
 
+func stubQEMUSerial(t *testing.T, writes []string, closeAfter time.Duration) {
+	t.Helper()
+	oldDial := dialQEMUSerialFn
+	dialQEMUSerialFn = func(ctx context.Context, address string) (net.Conn, error) {
+		client, server := net.Pipe()
+		go func() {
+			defer server.Close()
+			for _, line := range writes {
+				if _, err := io.WriteString(server, line); err != nil {
+					return
+				}
+			}
+			if closeAfter > 0 {
+				time.Sleep(closeAfter)
+			}
+		}()
+		return client, nil
+	}
+	t.Cleanup(func() {
+		dialQEMUSerialFn = oldDial
+	})
+}
+
 func TestStartReturnsBeforeProcessExits(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script test is POSIX-only")
@@ -188,21 +211,8 @@ func TestEspIDFRunnerRunStartsQEMUAndConnectsSerial(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
-	t.Setenv("HONCH_SANDBOX_QEMU_SERIAL_ADDR", listener.Addr().String())
-	go func() {
-		conn, err := listener.Accept()
-		if err != nil {
-			return
-		}
-		_, _ = conn.Write([]byte("ready\n"))
-		time.Sleep(500 * time.Millisecond)
-		_ = conn.Close()
-	}()
+	t.Setenv("HONCH_SANDBOX_QEMU_SERIAL_ADDR", "127.0.0.1:5555")
+	stubQEMUSerial(t, []string{"ready\n"}, 500*time.Millisecond)
 
 	r := EspIDFRunner{RepoRoot: repoRoot, StateDir: filepath.Join(repoRoot, ".honch-sandbox")}
 	build := EspIDFBuild{
@@ -263,21 +273,8 @@ func TestEspIDFRunnerRunUsesConfiguredAdapterSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
-	t.Setenv("HONCH_SANDBOX_QEMU_SERIAL_ADDR", listener.Addr().String())
-	go func() {
-		conn, err := listener.Accept()
-		if err != nil {
-			return
-		}
-		_, _ = conn.Write([]byte("ready\n"))
-		time.Sleep(500 * time.Millisecond)
-		_ = conn.Close()
-	}()
+	t.Setenv("HONCH_SANDBOX_QEMU_SERIAL_ADDR", "127.0.0.1:5555")
+	stubQEMUSerial(t, []string{"ready\n"}, 500*time.Millisecond)
 
 	r := EspIDFRunner{
 		RepoRoot:        repoRoot,
@@ -339,21 +336,8 @@ func TestEspIDFRunnerRunFailsWhenFirmwareNeverReportsReady(t *testing.T) {
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("HONCH_SANDBOX_QEMU_READY_TIMEOUT", "1s")
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer listener.Close()
-	t.Setenv("HONCH_SANDBOX_QEMU_SERIAL_ADDR", listener.Addr().String())
-	go func() {
-		conn, err := listener.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		_, _ = conn.Write([]byte("booting\n"))
-		time.Sleep(time.Second)
-	}()
+	t.Setenv("HONCH_SANDBOX_QEMU_SERIAL_ADDR", "127.0.0.1:5555")
+	stubQEMUSerial(t, []string{"booting\n"}, 2*time.Second)
 
 	r := EspIDFRunner{RepoRoot: repoRoot, StateDir: filepath.Join(repoRoot, ".honch-sandbox")}
 	build := EspIDFBuild{
@@ -363,7 +347,7 @@ func TestEspIDFRunnerRunFailsWhenFirmwareNeverReportsReady(t *testing.T) {
 	if err := os.MkdirAll(build.BuildDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	err = r.Run(context.Background(), build, "", io.Discard, io.Discard)
+	err := r.Run(context.Background(), build, "", io.Discard, io.Discard)
 	if err == nil {
 		t.Fatal("Run succeeded without firmware ready marker")
 	}
