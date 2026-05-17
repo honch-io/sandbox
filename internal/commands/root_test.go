@@ -55,6 +55,46 @@ func TestRootCommandExposesSandboxContract(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeFindsRepoRootFromNestedDirectory(t *testing.T) {
+	repoRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repoRoot, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(repoRoot, "adapters"),
+		filepath.Join(repoRoot, "harnesses", "c-core"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(repoRoot, "README.md"), []byte("test repo\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(repoRoot, "work", "tree", "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(cwd)
+	})
+	if err := os.Chdir(nested); err != nil {
+		t.Fatal(err)
+	}
+
+	root, _, _, err := loadRuntime(Dependencies{})
+	if err != nil {
+		t.Fatalf("loadRuntime returned error: %v", err)
+	}
+	if resolvedPath(root) != resolvedPath(repoRoot) {
+		t.Fatalf("loadRuntime root = %q, want %q", root, repoRoot)
+	}
+}
+
 func TestRootHelpUsesSandboxHelpFormat(t *testing.T) {
 	root := NewRootCommand(Dependencies{})
 	root.SetArgs([]string{"sandbox", "--help"})

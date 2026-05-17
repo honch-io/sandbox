@@ -30,7 +30,7 @@ func loadRuntime(deps Dependencies) (string, config.Config, session.Manager, err
 func findRepoRoot(start string) string {
 	dir := start
 	for {
-		if _, err := os.Stat(filepath.Join(dir, "c-core")); err == nil {
+		if isSandboxRepoRoot(dir) {
 			return dir
 		}
 		parent := filepath.Dir(dir)
@@ -39,6 +39,19 @@ func findRepoRoot(start string) string {
 		}
 		dir = parent
 	}
+}
+
+func isSandboxRepoRoot(dir string) bool {
+	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(dir, "adapters")); err != nil {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(dir, "harnesses")); err != nil {
+		return false
+	}
+	return true
 }
 
 func boolCount(values ...bool) int {
