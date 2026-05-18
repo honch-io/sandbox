@@ -991,6 +991,45 @@ func TestAutoOnboardingExitStopsRequestedCommand(t *testing.T) {
 	}
 }
 
+func TestAutoOnboardingExitDoesNotRepeat(t *testing.T) {
+	rootDir := t.TempDir()
+	createMinimalSandboxRoot(t, rootDir)
+
+	prevGate := onboardingGate
+	onboardingGate = func(io.Reader, io.Writer) bool { return true }
+	t.Cleanup(func() { onboardingGate = prevGate })
+
+	first := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("q\n")})
+	first.SetArgs([]string{"--plain", "sandbox", "status"})
+	var firstOut bytes.Buffer
+	first.SetOut(&firstOut)
+	first.SetErr(&firstOut)
+
+	if err := first.Execute(); err == nil {
+		t.Fatal("first command succeeded after auto-onboarding exit")
+	}
+	if !strings.Contains(ui.StripANSI(firstOut.String()), "Onboarding exited") {
+		t.Fatalf("first command did not show onboarding exit:\n%s", firstOut.String())
+	}
+
+	second := NewRootCommand(Dependencies{RootDir: rootDir})
+	second.SetArgs([]string{"--plain", "sandbox", "status"})
+	var secondOut bytes.Buffer
+	second.SetOut(&secondOut)
+	second.SetErr(&secondOut)
+
+	if err := second.Execute(); err != nil {
+		t.Fatalf("second command returned error: %v\n%s", err, secondOut.String())
+	}
+	output := ui.StripANSI(secondOut.String())
+	if strings.Contains(output, "Onboarding exited") || strings.Contains(output, "Step 1 of 4: Welcome") {
+		t.Fatalf("auto-onboarding repeated after first-run exit:\n%s", output)
+	}
+	if !strings.Contains(output, "Honch sandbox") {
+		t.Fatalf("second command did not run after onboarding was dismissed:\n%s", output)
+	}
+}
+
 func TestOnboardingCommandCanGoBackToPreviousStep(t *testing.T) {
 	rootDir := t.TempDir()
 	createMinimalSandboxRoot(t, rootDir)

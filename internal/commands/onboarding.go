@@ -57,7 +57,13 @@ func maybeRunOnboarding(cmd *cobra.Command, deps Dependencies) error {
 	if done {
 		return nil
 	}
-	return runOnboardingWizard(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), root, cfg)
+	err = runOnboardingWizard(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), root, cfg)
+	if errors.Is(err, errOnboardingExited) {
+		if saveErr := saveOnboardingState(root, cfg); saveErr != nil {
+			return saveErr
+		}
+	}
+	return err
 }
 
 func shouldSkipAutoOnboarding(cmd *cobra.Command) bool {
