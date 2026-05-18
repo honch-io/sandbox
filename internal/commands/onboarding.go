@@ -19,6 +19,8 @@ import (
 
 const onboardingStateVersion = 1
 
+var errOnboardingExited = errors.New("onboarding exited")
+
 var onboardingGate = defaultOnboardingGate
 var cloneSiblingRepo = runSiblingRepoClone
 
@@ -41,7 +43,11 @@ func newOnboardingCommand(deps Dependencies) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runOnboardingWizard(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), root, cfg)
+			err = runOnboardingWizard(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), root, cfg)
+			if errors.Is(err, errOnboardingExited) {
+				return nil
+			}
+			return err
 		},
 	}
 }
@@ -204,7 +210,7 @@ func exitOnboarding(stdout io.Writer) error {
 			{Key: "resume", Value: "honch onboarding"},
 		},
 	}}))
-	return nil
+	return errOnboardingExited
 }
 
 func completeOnboarding(stdout io.Writer, root string, cfg config.Config) error {

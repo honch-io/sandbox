@@ -983,6 +983,43 @@ func TestOnboardingCommandCanExitBeforeSavingMarker(t *testing.T) {
 	}
 }
 
+func TestAutoOnboardingExitStopsRequestedCommand(t *testing.T) {
+	rootDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(rootDir, "adapters"),
+		filepath.Join(rootDir, "harnesses"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	prevGate := onboardingGate
+	onboardingGate = func(io.Reader, io.Writer) bool { return true }
+	t.Cleanup(func() { onboardingGate = prevGate })
+
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("q\n")})
+	root.SetArgs([]string{"--plain", "sandbox", "status"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("command succeeded after onboarding exit")
+	}
+	output := ui.StripANSI(out.String())
+	if !strings.Contains(output, "Onboarding exited") {
+		t.Fatalf("onboarding did not explain exit:\n%s", output)
+	}
+	if strings.Contains(output, "Honch sandbox status") {
+		t.Fatalf("requested command ran after onboarding exit:\n%s", output)
+	}
+}
+
 func TestOnboardingCommandCanGoBackToPreviousStep(t *testing.T) {
 	rootDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {

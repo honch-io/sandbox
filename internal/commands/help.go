@@ -19,6 +19,9 @@ func installHelp(root *cobra.Command, deps Dependencies) {
 		}
 		if cmd.CommandPath() == "honch" {
 			if err := maybeRunOnboarding(cmd, deps); err != nil && !errors.Is(err, context.Canceled) {
+				if errors.Is(err, errOnboardingExited) {
+					return
+				}
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), ui.FormatError("onboarding failed", []ui.Row{
 					{Key: "error", Value: err.Error()},
 				}))
