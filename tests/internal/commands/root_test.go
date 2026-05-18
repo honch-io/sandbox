@@ -329,6 +329,26 @@ func TestSandboxStatusMarksProxyInactiveWithoutSession(t *testing.T) {
 	}
 }
 
+func TestDoctorMissingRepoGuidanceUsesSandboxCheckoutWording(t *testing.T) {
+	root := NewRootCommand(Dependencies{RootDir: t.TempDir()})
+	root.SetArgs([]string{"--plain", "sandbox", "doctor"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("doctor succeeded with missing repos")
+	}
+	output := ui.StripANSI(out.String() + "\n" + err.Error())
+	if !strings.Contains(output, "clone sibling repo beside sandbox") {
+		t.Fatalf("doctor output missing sandbox checkout guidance:\n%s", output)
+	}
+	if strings.Contains(output, "beside SDK") {
+		t.Fatalf("doctor output used stale SDK checkout guidance:\n%s", output)
+	}
+}
+
 func TestSandboxStopClearsRunnerOnlySession(t *testing.T) {
 	rootDir := t.TempDir()
 	manager := session.NewManager(filepath.Join(rootDir, ".honch-sandbox", "session.json"))

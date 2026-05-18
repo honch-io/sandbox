@@ -122,7 +122,7 @@ Defaults live in `config/default.yaml`:
 - ClickHouse port: `8123`
 - proxy port: `18080`
 
-Override those values from the SDK repo root with `.honch-sandbox.yaml` when
+Override those values from the sandbox repo root with `.honch-sandbox.yaml` when
 your local checkout is different.
 
 Use `./honch sandbox flags` to inspect command-specific flags without opening
