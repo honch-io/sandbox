@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
+	"honch.dev/honch/internal/config"
 )
 
 func startRunnerSupervisor(root string, cfg config.Config, adapter string, target string, controlPath string, env map[string]string, afterReady func(*os.Process) error) (*os.Process, error) {

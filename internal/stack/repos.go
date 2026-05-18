@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
+	"honch.dev/honch/internal/config"
 )
 
 func repoMap(cfg config.Config) map[string]string {

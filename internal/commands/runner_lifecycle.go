@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
-	"github.com/honch/sdk/tools/sandbox/internal/session"
-	"github.com/honch/sdk/tools/sandbox/internal/stack"
+	"honch.dev/honch/internal/config"
+	"honch.dev/honch/internal/session"
+	"honch.dev/honch/internal/stack"
 )
 
 func loadSandboxSession(manager session.Manager) (session.State, bool, error) {

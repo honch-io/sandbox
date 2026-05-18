@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
+	"honch.dev/honch/internal/config"
+	"honch.dev/honch/internal/ui"
 )
 
 type siblingRepoSource struct {

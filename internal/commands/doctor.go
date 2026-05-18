@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
-	"github.com/honch/sdk/tools/sandbox/internal/stack"
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
+	"honch.dev/honch/internal/config"
+	"honch.dev/honch/internal/stack"
+	"honch.dev/honch/internal/ui"
 )
 
 func newDoctorCommand(deps Dependencies) *cobra.Command {

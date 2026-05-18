@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
+	"honch.dev/honch/internal/ui"
 )
 
 func TestFormatKeyValuesUsesIndentedArrowLayout(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/honch/sdk/tools/sandbox/internal/scenario"
 	"github.com/spf13/cobra"
+	"honch.dev/honch/internal/scenario"
 )
 
 func TestScenarioNetworkStepRequiresRunningSandbox(t *testing.T) {

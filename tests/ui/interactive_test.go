@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
+	"honch.dev/honch/internal/ui"
 )
 
 func TestPromptSessionUsesOneBufferedInputStream(t *testing.T) {

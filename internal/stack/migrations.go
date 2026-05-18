@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
+	"honch.dev/honch/internal/config"
 )
 
 func (s Service) applyPlatformMigrations(ctx context.Context, cfg config.Config) error {

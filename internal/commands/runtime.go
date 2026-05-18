@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
-	"github.com/honch/sdk/tools/sandbox/internal/session"
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
+	"honch.dev/honch/internal/config"
+	"honch.dev/honch/internal/session"
+	"honch.dev/honch/internal/ui"
 )
 
 const installedSandboxRootSuffix = ".local/share/honch/sandbox"

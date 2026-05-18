@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
+	"honch.dev/honch/internal/config"
 )
 
 func TestSandboxConfigListShowsEditableSettings(t *testing.T) {

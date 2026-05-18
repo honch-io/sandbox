@@ -1,4 +1,4 @@
-module github.com/honch/sdk/tools/sandbox
+module honch.dev/honch
 
 go 1.26
 

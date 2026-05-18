@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
+	"honch.dev/honch/internal/config"
+	"honch.dev/honch/internal/ui"
 )
 
 const (

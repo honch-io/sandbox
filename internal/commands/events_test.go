@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
-	"github.com/honch/sdk/tools/sandbox/internal/session"
+	"honch.dev/honch/internal/config"
+	"honch.dev/honch/internal/session"
 )
 
 type fakeTailClient struct {

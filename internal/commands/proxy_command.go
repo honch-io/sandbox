@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/honch/sdk/tools/sandbox/internal/proxy"
 	"github.com/spf13/cobra"
+	"honch.dev/honch/internal/proxy"
 )
 
 func newProxyServeCommand(deps Dependencies) *cobra.Command {

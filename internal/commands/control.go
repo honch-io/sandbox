@@ -7,8 +7,8 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
+	"honch.dev/honch/internal/ui"
 )
 
 func liveControlCommand(deps Dependencies, use string, short string, run func(io.Writer) error) *cobra.Command {

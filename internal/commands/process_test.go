@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/honch/sdk/tools/sandbox/internal/session"
+	"honch.dev/honch/internal/session"
 )
 
 func TestReleaseDetachedProcessKillsProcessWhenReadinessFails(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
+	"honch.dev/honch/internal/config"
 )
 
 func (s Service) startBackground(ctx context.Context, dir string, cfg config.Config, command config.CommandConfig) error {

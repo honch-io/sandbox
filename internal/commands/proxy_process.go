@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
-	"github.com/honch/sdk/tools/sandbox/internal/proxy"
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
+	"honch.dev/honch/internal/config"
+	"honch.dev/honch/internal/proxy"
+	"honch.dev/honch/internal/ui"
 )
 
 var lookupListeningProcess = identifyListeningProcess

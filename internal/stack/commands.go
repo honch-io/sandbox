@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
+	"honch.dev/honch/internal/config"
 )
 
 func (s Service) runCommands(ctx context.Context, cfg config.Config, commands []config.CommandConfig) error {

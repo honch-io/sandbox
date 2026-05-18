@@ -3,7 +3,7 @@ package commands
 import (
 	"path/filepath"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
+	"honch.dev/honch/internal/config"
 )
 
 func killSandboxRunnerProcesses(root string, cfg config.Config) error {

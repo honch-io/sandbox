@@ -7,9 +7,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"honch.dev/honch/internal/ui"
 )
 
 func installHelp(root *cobra.Command, deps Dependencies) {

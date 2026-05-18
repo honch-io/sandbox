@@ -12,10 +12,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/honch/sdk/tools/sandbox/internal/config"
-	"github.com/honch/sdk/tools/sandbox/internal/events"
-	"github.com/honch/sdk/tools/sandbox/internal/runner"
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
+	"honch.dev/honch/internal/config"
+	"honch.dev/honch/internal/events"
+	"honch.dev/honch/internal/runner"
+	"honch.dev/honch/internal/ui"
 )
 
 var sendHarnessControlFn = sendHarnessControl

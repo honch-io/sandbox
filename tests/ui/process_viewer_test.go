@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
+	"honch.dev/honch/internal/ui"
 )
 
 func TestProcessViewerModelAppendsOutputAndShowsCompletion(t *testing.T) {

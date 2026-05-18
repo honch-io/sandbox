@@ -7,13 +7,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
-	"github.com/honch/sdk/tools/sandbox/internal/health"
-	"github.com/honch/sdk/tools/sandbox/internal/proxy"
-	"github.com/honch/sdk/tools/sandbox/internal/session"
-	"github.com/honch/sdk/tools/sandbox/internal/stack"
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
+	"honch.dev/honch/internal/config"
+	"honch.dev/honch/internal/health"
+	"honch.dev/honch/internal/proxy"
+	"honch.dev/honch/internal/session"
+	"honch.dev/honch/internal/stack"
+	"honch.dev/honch/internal/ui"
 )
 
 func newStartCommand(deps Dependencies) *cobra.Command {

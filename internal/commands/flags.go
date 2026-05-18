@@ -3,8 +3,8 @@ package commands
 import (
 	"fmt"
 
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
+	"honch.dev/honch/internal/ui"
 )
 
 func newFlagsCommand(deps Dependencies) *cobra.Command {

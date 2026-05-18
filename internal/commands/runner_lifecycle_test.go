@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/honch/sdk/tools/sandbox/internal/session"
+	"honch.dev/honch/internal/session"
 )
 
 func TestSandboxStopStopsFullStackAndClearsSession(t *testing.T) {

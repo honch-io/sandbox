@@ -6,11 +6,11 @@ import (
 	"io"
 	"time"
 
-	"github.com/honch/sdk/tools/sandbox/internal/proxy"
-	"github.com/honch/sdk/tools/sandbox/internal/runner"
-	"github.com/honch/sdk/tools/sandbox/internal/scenario"
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
+	"honch.dev/honch/internal/proxy"
+	"honch.dev/honch/internal/runner"
+	"honch.dev/honch/internal/scenario"
+	"honch.dev/honch/internal/ui"
 )
 
 func newScenarioCommand(deps Dependencies) *cobra.Command {

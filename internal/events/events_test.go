@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
+	"honch.dev/honch/internal/config"
 )
 
 func TestListQueryFiltersByTeamID(t *testing.T) {

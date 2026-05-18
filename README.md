@@ -39,9 +39,17 @@ There are also manual paths:
 
 | Path | What it is |
 | --- | --- |
+| Go install | Install the latest tagged CLI with `go install honch.dev/honch@latest` |
 | Build from git | Compile the current checkout and use the binary in place |
 | Copy into PATH | Install the built binary to `~/.local/bin/honch` |
 | Release binary | Download a prebuilt GitHub release artifact |
+
+If you just want the CLI:
+
+```sh
+go install honch.dev/honch@latest
+honch
+```
 
 If you already cloned this repo, the shortest path is:
 

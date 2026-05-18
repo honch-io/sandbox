@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/honch/sdk/tools/sandbox/internal/proxy"
-	"github.com/honch/sdk/tools/sandbox/internal/session"
+	"honch.dev/honch/internal/proxy"
+	"honch.dev/honch/internal/session"
 )
 
 func TestSandboxRunRejectsInactiveSandboxAndSkipsBuild(t *testing.T) {

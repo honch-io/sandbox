@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/honch/sdk/tools/sandbox/internal/config"
-	"github.com/honch/sdk/tools/sandbox/internal/proxy"
-	"github.com/honch/sdk/tools/sandbox/internal/runner"
-	"github.com/honch/sdk/tools/sandbox/internal/session"
-	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
+	"honch.dev/honch/internal/config"
+	"honch.dev/honch/internal/proxy"
+	"honch.dev/honch/internal/runner"
+	"honch.dev/honch/internal/session"
+	"honch.dev/honch/internal/ui"
 )
 
 func newBatteryCommand(deps Dependencies) *cobra.Command {

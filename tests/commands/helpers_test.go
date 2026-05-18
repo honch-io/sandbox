@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	commands "github.com/honch/sdk/tools/sandbox/internal/commands"
 	"github.com/spf13/cobra"
+	commands "honch.dev/honch/internal/commands"
 )
 
 type Dependencies = commands.Dependencies
