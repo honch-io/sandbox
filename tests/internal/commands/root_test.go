@@ -838,7 +838,7 @@ func TestOnboardingAutoLaunchRunsOnce(t *testing.T) {
 	onboardingGate = func(io.Reader, io.Writer) bool { return true }
 	t.Cleanup(func() { onboardingGate = prevGate })
 
-	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("n\nn\nn\nn\n")})
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("\nn\nn\nn\nn\n")})
 	root.SetArgs([]string{"--plain"})
 	var out bytes.Buffer
 	root.SetOut(&out)
@@ -883,7 +883,7 @@ func TestOnboardingCommandUsesGuidedStepFlow(t *testing.T) {
 		}
 	}
 
-	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("n\nn\nn\nn\n")})
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("\nn\nn\nn\nn\n")})
 	root.SetArgs([]string{"--plain", "onboarding"})
 	var out bytes.Buffer
 	root.SetOut(&out)
@@ -898,15 +898,81 @@ func TestOnboardingCommandUsesGuidedStepFlow(t *testing.T) {
 	}
 	assertContainsInOrder(t, output, []string{
 		"Step 1 of 4: Welcome",
+		"Continue onboarding? [Enter/q]",
 		"Step 2 of 4: Repositories",
-		"Clone missing Honch repos now? [y/N]",
-		"Update sibling repo paths now? [y/N]",
+		"Clone missing Honch repos now? [y/N/b/q]",
+		"Update sibling repo paths now? [y/N/b/q]",
 		"Step 3 of 4: Setup",
-		"Run the recommended sandbox setup now? [y/N]",
+		"Run the recommended sandbox setup now? [y/N/b/q]",
 		"Step 4 of 4: Install",
 		"Install honch to",
 		"Honch onboarding complete",
 	})
+}
+
+func TestOnboardingCommandCanExitBeforeSavingMarker(t *testing.T) {
+	rootDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(rootDir, "adapters"),
+		filepath.Join(rootDir, "harnesses"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("q\n")})
+	root.SetArgs([]string{"--plain", "onboarding"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("onboarding returned error: %v\n%s", err, out.String())
+	}
+	output := ui.StripANSI(out.String())
+	if !strings.Contains(output, "Onboarding exited") {
+		t.Fatalf("onboarding did not explain exit:\n%s", output)
+	}
+	marker := filepath.Join(rootDir, ".honch-sandbox", "onboarding.json")
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("onboarding marker should not exist after exit, stat err: %v", err)
+	}
+}
+
+func TestOnboardingCommandCanGoBackToPreviousStep(t *testing.T) {
+	rootDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(rootDir, "adapters"),
+		filepath.Join(rootDir, "harnesses"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("\nn\nn\nb\nn\nn\nn\n")})
+	root.SetArgs([]string{"--plain", "onboarding"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("onboarding returned error: %v\n%s", err, out.String())
+	}
+	output := ui.StripANSI(out.String())
+	firstRepos := strings.Index(output, "Step 2 of 4: Repositories")
+	setup := strings.Index(output, "Step 3 of 4: Setup")
+	lastRepos := strings.LastIndex(output, "Step 2 of 4: Repositories")
+	if firstRepos < 0 || setup < 0 || lastRepos <= setup {
+		t.Fatalf("onboarding did not return from setup to repositories:\n%s", output)
+	}
 }
 
 func TestOnboardingCommandSavesRepoPaths(t *testing.T) {
@@ -930,7 +996,7 @@ func TestOnboardingCommandSavesRepoPaths(t *testing.T) {
 	platform := filepath.Join(rootDir, "repos", "platform")
 	worker := filepath.Join(rootDir, "repos", "worker")
 
-	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("n\ny\n" + capture + "\n" + platform + "\n" + worker + "\nn\nn\n")})
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("\nn\ny\n" + capture + "\n" + platform + "\n" + worker + "\nn\nn\n")})
 	root.SetArgs([]string{"--plain", "onboarding"})
 	var out bytes.Buffer
 	root.SetOut(&out)
@@ -972,7 +1038,7 @@ func TestOnboardingCommandCanCloneMissingRepos(t *testing.T) {
 	}
 	t.Cleanup(func() { cloneSiblingRepo = prevClone })
 
-	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("y\n\nn\nn\n")})
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("\ny\n\nn\nn\n")})
 	root.SetArgs([]string{"--plain", "onboarding"})
 	var out bytes.Buffer
 	root.SetOut(&out)
@@ -1003,7 +1069,7 @@ func TestOnboardingCommandCanCloneMissingRepos(t *testing.T) {
 			t.Fatalf("updated config missing %q:\n%s", want, string(data))
 		}
 	}
-	for _, want := range []string{"Clone missing Honch repos now? [y/N]", "Clone destination parent"} {
+	for _, want := range []string{"Clone missing Honch repos now? [y/N/b/q]", "Clone destination parent"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("onboarding output missing %q:\n%s", want, out.String())
 		}

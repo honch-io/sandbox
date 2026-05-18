@@ -16,6 +16,16 @@ import (
 
 var ErrPromptCancelled = errors.New("prompt cancelled")
 
+type PromptAction int
+
+const (
+	PromptActionNo PromptAction = iota
+	PromptActionYes
+	PromptActionBack
+	PromptActionExit
+	PromptActionContinue
+)
+
 type PromptOption struct {
 	Label       string
 	Description string
@@ -57,6 +67,62 @@ func (p *PromptSession) ConfirmDefault(prompt string, defaultValue bool) (bool, 
 		return defaultValue, nil
 	}
 	return answer == "y" || answer == "yes", nil
+}
+
+func (p *PromptSession) ContinueOrExit(prompt string) (PromptAction, error) {
+	if IsInteractive(p.in, p.out) && !plain {
+		return PromptContinueOrExit(p.in, p.out, prompt)
+	}
+	_, _ = fmt.Fprint(p.out, prompt+" [Enter/q] ")
+	answer, err := p.readLine()
+	if err != nil {
+		return PromptActionExit, err
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	if answer == "q" || answer == "quit" || answer == "exit" {
+		return PromptActionExit, nil
+	}
+	return PromptActionContinue, nil
+}
+
+func (p *PromptSession) ConfirmNavigate(prompt string, defaultValue bool, canBack bool) (PromptAction, error) {
+	if IsInteractive(p.in, p.out) && !plain {
+		return PromptConfirmNavigate(p.in, p.out, prompt, defaultValue, canBack)
+	}
+	suffix := " [y/N/q] "
+	if canBack {
+		suffix = " [y/N/b/q] "
+	}
+	if defaultValue {
+		suffix = " [Y/n/q] "
+		if canBack {
+			suffix = " [Y/n/b/q] "
+		}
+	}
+	_, _ = fmt.Fprint(p.out, prompt+suffix)
+	answer, err := p.readLine()
+	if err != nil {
+		return PromptActionExit, err
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	switch answer {
+	case "":
+		if defaultValue {
+			return PromptActionYes, nil
+		}
+		return PromptActionNo, nil
+	case "y", "yes":
+		return PromptActionYes, nil
+	case "b", "back":
+		if canBack {
+			return PromptActionBack, nil
+		}
+		return PromptActionNo, nil
+	case "q", "quit", "exit":
+		return PromptActionExit, nil
+	default:
+		return PromptActionNo, nil
+	}
 }
 
 func (p *PromptSession) Text(prompt string, defaultValue string) (string, error) {
@@ -170,6 +236,48 @@ func PromptChoice(in io.Reader, out io.Writer, title string, options []PromptOpt
 	return result.selected, nil
 }
 
+func PromptContinueOrExit(in io.Reader, out io.Writer, prompt string) (PromptAction, error) {
+	model := newActionModel("Continue", prompt, []promptActionButton{
+		{label: "Continue", action: PromptActionContinue},
+		{label: "Exit", action: PromptActionExit},
+	}, 0)
+	return runActionModel(in, out, model)
+}
+
+func PromptConfirmNavigate(in io.Reader, out io.Writer, prompt string, defaultValue bool, canBack bool) (PromptAction, error) {
+	buttons := []promptActionButton{
+		{label: "Exit", action: PromptActionExit},
+		{label: "No", action: PromptActionNo},
+		{label: "Yes", action: PromptActionYes},
+	}
+	selected := 1
+	if canBack {
+		buttons = append([]promptActionButton{{label: "Back", action: PromptActionBack}}, buttons...)
+		selected = 2
+	}
+	if defaultValue {
+		selected = len(buttons) - 1
+	}
+	model := newActionModel("Confirm", prompt, buttons, selected)
+	return runActionModel(in, out, model)
+}
+
+func runActionModel(in io.Reader, out io.Writer, model actionModel) (PromptAction, error) {
+	program := tea.NewProgram(model, tea.WithInput(in), tea.WithOutput(out), tea.WithAltScreen())
+	final, err := program.Run()
+	if err != nil {
+		if errors.Is(err, tea.ErrInterrupted) {
+			return PromptActionExit, ErrPromptCancelled
+		}
+		return PromptActionExit, err
+	}
+	result, ok := final.(actionModel)
+	if !ok {
+		return PromptActionExit, fmt.Errorf("unexpected prompt model %T", final)
+	}
+	return result.selectedAction(), nil
+}
+
 func WithSpinner(ctx context.Context, in io.Reader, out io.Writer, message string, run func(context.Context) error) error {
 	return WithSpinnerDone(ctx, in, out, message, message+" done", run)
 }
@@ -268,6 +376,104 @@ func (m confirmModel) View() string {
 
 func (m confirmModel) confirmed() bool {
 	return m.choice == 1
+}
+
+type promptActionButton struct {
+	label  string
+	action PromptAction
+}
+
+type actionModel struct {
+	title    string
+	prompt   string
+	buttons  []promptActionButton
+	selected int
+}
+
+func newActionModel(title string, prompt string, buttons []promptActionButton, selected int) actionModel {
+	if len(buttons) == 0 {
+		buttons = []promptActionButton{{label: "Exit", action: PromptActionExit}}
+	}
+	if selected < 0 || selected >= len(buttons) {
+		selected = 0
+	}
+	return actionModel{title: title, prompt: prompt, buttons: buttons, selected: selected}
+}
+
+func (m actionModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m actionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "left", "h", "shift+tab":
+			if m.selected > 0 {
+				m.selected--
+			}
+			return m, nil
+		case "right", "l", "tab":
+			if m.selected < len(m.buttons)-1 {
+				m.selected++
+			}
+			return m, nil
+		case "b":
+			if index := m.actionIndex(PromptActionBack); index >= 0 {
+				m.selected = index
+				return m, tea.Quit
+			}
+		case "q", "esc", "ctrl+c":
+			if index := m.actionIndex(PromptActionExit); index >= 0 {
+				m.selected = index
+			}
+			return m, tea.Quit
+		case "n":
+			if index := m.actionIndex(PromptActionNo); index >= 0 {
+				m.selected = index
+				return m, tea.Quit
+			}
+		case "y":
+			if index := m.actionIndex(PromptActionYes); index >= 0 {
+				m.selected = index
+				return m, tea.Quit
+			}
+		case "enter":
+			return m, tea.Quit
+		}
+	}
+	return m, nil
+}
+
+func (m actionModel) View() string {
+	var b strings.Builder
+	b.WriteString("\n  ")
+	b.WriteString(Heading(m.title))
+	b.WriteString("\n\n    ")
+	b.WriteString(render(helpText, m.prompt))
+	b.WriteString("\n\n    ")
+	for i, button := range m.buttons {
+		if i > 0 {
+			b.WriteString("  ")
+		}
+		b.WriteString(confirmButton(button.label, i == m.selected))
+	}
+	b.WriteString("\n\n    ")
+	b.WriteString(render(helpText, "tab/arrow selects, enter accepts, b goes back, q exits"))
+	return b.String()
+}
+
+func (m actionModel) selectedAction() PromptAction {
+	return m.buttons[m.selected].action
+}
+
+func (m actionModel) actionIndex(action PromptAction) int {
+	for i, button := range m.buttons {
+		if button.action == action {
+			return i
+		}
+	}
+	return -1
 }
 
 type textModel struct {

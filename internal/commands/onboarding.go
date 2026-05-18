@@ -84,71 +84,130 @@ func runOnboardingWizard(ctx context.Context, stdin io.Reader, stdout io.Writer,
 		return err
 	}
 
-	printOnboardingStep(stdout, 1, 4, "Welcome", []ui.Section{{
-		Rows: []ui.Row{
-			{Key: "workspace", Value: root},
-			{Key: "config", Value: configFilePath(root)},
-			{Key: "this wizard", Value: "connects required repos, prepares the local stack, and can install the honch binary"},
-		},
-	}})
-
-	printOnboardingStep(stdout, 2, 4, "Repositories", []ui.Section{{
-		Name: "current paths",
-		Rows: onboardingRepoRows(root, cfg),
-	}})
-	if needsRepoUpdate(report.Repos) {
-		ok, err := prompts.Confirm("Clone missing Honch repos now?")
-		if err != nil {
-			return err
-		}
-		if ok {
-			if err := cloneMissingSiblingRepos(ctx, prompts, stdout, stderr, root, &cfg); err != nil {
-				return err
-			}
-		} else {
-			ok, err := prompts.Confirm("Update sibling repo paths now?")
+	step := 1
+	for {
+		switch step {
+		case 1:
+			printOnboardingStep(stdout, 1, 4, "Welcome", []ui.Section{{
+				Rows: []ui.Row{
+					{Key: "workspace", Value: root},
+					{Key: "config", Value: configFilePath(root)},
+					{Key: "this wizard", Value: "connects required repos, prepares the local stack, and can install the honch binary"},
+				},
+			}})
+			action, err := prompts.ContinueOrExit("Continue onboarding?")
 			if err != nil {
 				return err
 			}
-			if ok {
-				if err := promptAndSaveRepoPaths(prompts, root, &cfg); err != nil {
+			if action == ui.PromptActionExit {
+				return exitOnboarding(stdout)
+			}
+			step = 2
+		case 2:
+			printOnboardingStep(stdout, 2, 4, "Repositories", []ui.Section{{
+				Name: "current paths",
+				Rows: onboardingRepoRows(root, cfg),
+			}})
+			if needsRepoUpdate(report.Repos) {
+				action, err := prompts.ConfirmNavigate("Clone missing Honch repos now?", false, true)
+				if err != nil {
 					return err
 				}
+				switch action {
+				case ui.PromptActionBack:
+					step = 1
+					continue
+				case ui.PromptActionExit:
+					return exitOnboarding(stdout)
+				case ui.PromptActionYes:
+					if err := cloneMissingSiblingRepos(ctx, prompts, stdout, stderr, root, &cfg); err != nil {
+						return err
+					}
+				case ui.PromptActionNo:
+					action, err := prompts.ConfirmNavigate("Update sibling repo paths now?", false, true)
+					if err != nil {
+						return err
+					}
+					switch action {
+					case ui.PromptActionBack:
+						step = 2
+						continue
+					case ui.PromptActionExit:
+						return exitOnboarding(stdout)
+					case ui.PromptActionYes:
+						if err := promptAndSaveRepoPaths(prompts, root, &cfg); err != nil {
+							return err
+						}
+					}
+				}
+				report = buildSandboxDoctorReport(root, cfg)
+			}
+			step = 3
+		case 3:
+			printOnboardingStep(stdout, 3, 4, "Setup", []ui.Section{{
+				Name: "recommended fixes",
+				Rows: onboardingSetupRows(report),
+			}})
+			action, err := prompts.ConfirmNavigate("Run the recommended sandbox setup now?", false, true)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case ui.PromptActionBack:
+				step = 2
+			case ui.PromptActionExit:
+				return exitOnboarding(stdout)
+			case ui.PromptActionYes:
+				if err := runOnboardingSetup(ctx, stdin, stdout, stderr, root, cfg); err != nil {
+					return err
+				}
+				step = 4
+			case ui.PromptActionNo:
+				step = 4
+			}
+		case 4:
+			printOnboardingStep(stdout, 4, 4, "Install", []ui.Section{{
+				Rows: []ui.Row{
+					{Key: "target", Value: target},
+					{Key: "effect", Value: "copies the current honch executable into your user bin directory"},
+				},
+			}})
+			action, err := prompts.ConfirmNavigate(fmt.Sprintf("Install honch to %s now?", target), false, true)
+			if err != nil {
+				return err
+			}
+			switch action {
+			case ui.PromptActionBack:
+				step = 3
+			case ui.PromptActionExit:
+				return exitOnboarding(stdout)
+			case ui.PromptActionYes:
+				if err := installOnboardingBinary(stdout, target); err != nil {
+					return err
+				}
+				return completeOnboarding(stdout, root, cfg)
+			case ui.PromptActionNo:
+				return completeOnboarding(stdout, root, cfg)
 			}
 		}
-		report = buildSandboxDoctorReport(root, cfg)
 	}
+}
 
-	printOnboardingStep(stdout, 3, 4, "Setup", []ui.Section{{
-		Name: "recommended fixes",
-		Rows: onboardingSetupRows(report),
-	}})
-	ok, err := prompts.Confirm("Run the recommended sandbox setup now?")
-	if err != nil {
-		return err
-	}
-	if ok {
-		if err := runOnboardingSetup(ctx, stdin, stdout, stderr, root, cfg); err != nil {
-			return err
-		}
-	}
+func printOnboardingStep(stdout io.Writer, current int, total int, name string, sections []ui.Section) {
+	title := fmt.Sprintf("Step %d of %d: %s", current, total, name)
+	_, _ = fmt.Fprint(stdout, ui.FormatSectionsWrapped(title, sections))
+}
 
-	printOnboardingStep(stdout, 4, 4, "Install", []ui.Section{{
+func exitOnboarding(stdout io.Writer) error {
+	_, _ = fmt.Fprint(stdout, ui.FormatSections("Onboarding exited", []ui.Section{{
 		Rows: []ui.Row{
-			{Key: "target", Value: target},
-			{Key: "effect", Value: "copies the current honch executable into your user bin directory"},
+			{Key: "resume", Value: "honch onboarding"},
 		},
-	}})
-	ok, err = prompts.Confirm(fmt.Sprintf("Install honch to %s now?", target))
-	if err != nil {
-		return err
-	}
-	if ok {
-		if err := installOnboardingBinary(stdout, target); err != nil {
-			return err
-		}
-	}
+	}}))
+	return nil
+}
 
+func completeOnboarding(stdout io.Writer, root string, cfg config.Config) error {
 	if err := saveOnboardingState(root, cfg); err != nil {
 		return err
 	}
@@ -160,11 +219,6 @@ func runOnboardingWizard(ctx context.Context, stdin io.Reader, stdout io.Writer,
 		},
 	}}))
 	return nil
-}
-
-func printOnboardingStep(stdout io.Writer, current int, total int, name string, sections []ui.Section) {
-	title := fmt.Sprintf("Step %d of %d: %s", current, total, name)
-	_, _ = fmt.Fprint(stdout, ui.FormatSectionsWrapped(title, sections))
 }
 
 func onboardingSetupRows(report sandboxDoctorReport) []ui.Row {

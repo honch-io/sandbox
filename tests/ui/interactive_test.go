@@ -39,3 +39,28 @@ func TestPromptSessionUsesOneBufferedInputStream(t *testing.T) {
 		t.Fatalf("text = %q, want custom", value)
 	}
 }
+
+func TestPromptSessionNavigationActionsUsePlainFallback(t *testing.T) {
+	ui.SetPlain(true)
+	t.Cleanup(func() { ui.SetPlain(false) })
+
+	in := bytes.NewBufferString("b\nq\n")
+	var out bytes.Buffer
+	prompts := ui.NewPromptSession(in, &out)
+
+	action, err := prompts.ConfirmNavigate("Run setup now?", false, true)
+	if err != nil {
+		t.Fatalf("ConfirmNavigate returned error: %v", err)
+	}
+	if action != ui.PromptActionBack {
+		t.Fatalf("ConfirmNavigate action = %v, want back", action)
+	}
+
+	action, err = prompts.ContinueOrExit("Continue onboarding?")
+	if err != nil {
+		t.Fatalf("ContinueOrExit returned error: %v", err)
+	}
+	if action != ui.PromptActionExit {
+		t.Fatalf("ContinueOrExit action = %v, want exit", action)
+	}
+}
