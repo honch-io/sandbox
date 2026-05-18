@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/honch/sdk/tools/sandbox/internal/config"
+	"github.com/honch/sdk/tools/sandbox/internal/session"
 	"github.com/honch/sdk/tools/sandbox/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -25,7 +26,7 @@ func newQEMUCommand(deps Dependencies) *cobra.Command {
 		Args:  rejectUnknownArgs,
 		RunE:  commandGroupRunE,
 	}
-	cmd.AddCommand(newQEMUDoctorCommand(deps), newQEMUInstallCommand(deps))
+	cmd.AddCommand(newQEMUDoctorCommand(deps), newQEMUInstallCommand(deps), newQEMUStopCommand(deps))
 	return cmd
 }
 
@@ -108,6 +109,40 @@ func newQEMUInstallCommand(deps Dependencies) *cobra.Command {
 	cmd.Flags().BoolVar(&yes, "yes", false, "run without confirmation")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print install commands without running them")
 	return cmd
+}
+
+func newQEMUStopCommand(deps Dependencies) *cobra.Command {
+	return &cobra.Command{
+		Use:   "stop",
+		Short: "Stop the active ESP-IDF runner",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, cfg, manager, err := loadRuntime(deps)
+			if err != nil {
+				return err
+			}
+			state, exists, err := loadSandboxSession(manager)
+			if err != nil {
+				return err
+			}
+			patterns := sandboxAdapterProcessPatterns(root, cfg, "esp-idf")
+			targetActive := sandboxHasMatchingProcesses(patterns) || (exists && state.Runner.Adapter == "esp-idf" && runnerActive(state.Runner))
+			if !targetActive {
+				_ = os.Remove(adapterControlPath(root, cfg, "esp-idf"))
+				if exists && state.Runner.Adapter == "esp-idf" {
+					state.Runner = session.RunnerState{}
+					if err := manager.Save(state); err != nil {
+						return err
+					}
+				}
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Success("sandbox runner is not running"))
+				return nil
+			}
+			return ui.WithSpinnerDone(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), "stopping esp-idf runner", "esp-idf runner has been stopped", func(ctx context.Context) error {
+				return stopSandboxAdapter(ctx, root, cfg, manager, "esp-idf")
+			})
+		},
+	}
 }
 
 type qemuStatus struct {

@@ -127,37 +127,60 @@ func newStartCommand(deps Dependencies) *cobra.Command {
 
 func newStopCommand(deps Dependencies) *cobra.Command {
 	return &cobra.Command{
-		Use:   "stop",
-		Short: "Stop the active sandbox session",
+		Use:   "stop [adapter]",
+		Short: "Stop the sandbox stack or an active runner",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, cfg, manager, err := loadRuntime(deps)
 			if err != nil {
 				return err
 			}
-			state, err := manager.Load()
-			if err != nil || !sandboxHasActiveProcesses(state) {
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Success("sandbox is not running"))
-				return nil
-			}
-			return ui.WithSpinnerDone(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), "stopping sandbox", "sandbox has been stopped", func(ctx context.Context) error {
-				if state.Proxy.PID > 0 {
-					_ = killProcess(state.Proxy.PID)
-				}
-				_ = os.Remove(proxyPIDPath(root, cfg))
-				if state.Runner.PID > 0 && state.Runner.Detached {
-					_ = killProcess(state.Runner.PID)
-				}
-				_ = killSandboxRunnerProcesses(root, cfg)
-				if state.Stack.Running {
-					if err := stack.New(root).Stop(ctx, cfg); err != nil {
-						return err
-					}
-				}
-				if err := manager.Clear(); err != nil {
+			switch len(args) {
+			case 0:
+				state, exists, err := loadSandboxSession(manager)
+				if err != nil {
 					return err
 				}
-				return nil
-			})
+				if (!exists && !sandboxHasManagedArtifacts(root, cfg)) || (exists && !sandboxStateLooksActive(state) && !sandboxHasManagedArtifacts(root, cfg)) {
+					_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Success("sandbox is not running"))
+					return nil
+				}
+				return ui.WithSpinnerDone(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), "stopping sandbox", "sandbox has been stopped", func(ctx context.Context) error {
+					return stopSandboxAll(ctx, root, cfg, manager)
+				})
+			case 1:
+				adapterConfig, err := loadAdapterConfig(deps, args[0])
+				if err != nil {
+					return err
+				}
+				patterns := sandboxAdapterProcessPatterns(root, cfg, adapterConfig.Name)
+				state, exists, err := loadSandboxSession(manager)
+				if err != nil {
+					return err
+				}
+				if exists && state.Runner.Adapter != "" && state.Runner.Adapter != adapterConfig.Name && runnerActive(state.Runner) {
+					return fmt.Errorf("sandbox runner %q is active; stop it first with `honch sandbox stop %s`", state.Runner.Adapter, state.Runner.Adapter)
+				}
+				targetActive := sandboxHasMatchingProcesses(patterns) || (exists && state.Runner.Adapter == adapterConfig.Name && runnerActive(state.Runner))
+				if !targetActive {
+					_ = os.Remove(adapterControlPath(root, cfg, adapterConfig.Name))
+					if exists && state.Runner.Adapter == adapterConfig.Name {
+						state.Runner = session.RunnerState{}
+						if err := manager.Save(state); err != nil {
+							return err
+						}
+					}
+					_, _ = fmt.Fprintln(cmd.OutOrStdout(), ui.Success("sandbox runner is not running"))
+					return nil
+				}
+				return ui.WithSpinnerDone(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), "stopping "+adapterConfig.Name+" runner", adapterConfig.Name+" runner has been stopped", func(ctx context.Context) error {
+					return stopSandboxAdapter(ctx, root, cfg, manager, adapterConfig.Name)
+				})
+			default:
+				return errors.New(ui.FormatError("too many arguments", []ui.Row{
+					{Key: "required", Value: "honch sandbox stop [adapter]"},
+					{Key: "example", Value: "honch sandbox stop c-core"},
+				}))
+			}
 		},
 	}
 }
@@ -224,7 +247,7 @@ func newStatusCommand(deps Dependencies) *cobra.Command {
 			_, _ = fmt.Fprint(cmd.OutOrStdout(), ui.FormatSections("Honch sandbox", []ui.Section{
 				{Name: "session", Rows: sessionRows},
 				{Name: "repos", Rows: repoRows},
-				{Name: "services", Rows: serviceHealthRows(cmd.Context(), cfg, state, stateErr)},
+				{Name: "services", Rows: serviceHealthRows(cmd.Context(), root, cfg, state, stateErr)},
 				{Name: "ports", Rows: portRows},
 			}))
 			return nil
@@ -232,7 +255,7 @@ func newStatusCommand(deps Dependencies) *cobra.Command {
 	}
 }
 
-func serviceHealthRows(ctx context.Context, cfg config.Config, state session.State, stateErr error) []ui.Row {
+func serviceHealthRows(ctx context.Context, root string, cfg config.Config, state session.State, stateErr error) []ui.Row {
 	checkTimeout := 750 * time.Millisecond
 	return []ui.Row{
 		{Key: "postgres", Value: health.TCPStatus(ctx, "127.0.0.1:5432", checkTimeout)},
@@ -242,7 +265,27 @@ func serviceHealthRows(ctx context.Context, cfg config.Config, state session.Sta
 		{Key: "capture health", Value: health.HTTPStatus(ctx, fmt.Sprintf("http://127.0.0.1:%d/health", cfg.Ports.Capture), checkTimeout)},
 		{Key: "worker health", Value: health.HTTPStatus(ctx, fmt.Sprintf("http://127.0.0.1:%d/", cfg.Ports.Worker), checkTimeout)},
 		proxyHealthRow(ctx, cfg, state, stateErr, checkTimeout),
+		qemuHealthRow(root, cfg, state, stateErr),
 	}
+}
+
+func qemuHealthRow(root string, cfg config.Config, state session.State, stateErr error) ui.Row {
+	if sandboxHasMatchingProcesses(sandboxQEMUProcessPatterns(root, cfg)) {
+		return ui.Row{Key: "qemu", Value: "up"}
+	}
+	if stateErr != nil {
+		return ui.Row{Key: "qemu", Value: "n/a"}
+	}
+	if state.Runner.Adapter != "esp-idf" {
+		return ui.Row{Key: "qemu", Value: "n/a"}
+	}
+	if state.Runner.PID > 0 && processAlive(state.Runner.PID) {
+		return ui.Row{Key: "qemu", Value: "down"}
+	}
+	if state.Stack.Running {
+		return ui.Row{Key: "qemu", Value: "down"}
+	}
+	return ui.Row{Key: "qemu", Value: "n/a"}
 }
 
 func proxyHealthRow(ctx context.Context, cfg config.Config, state session.State, stateErr error, checkTimeout time.Duration) ui.Row {

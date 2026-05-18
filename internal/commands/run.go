@@ -43,10 +43,14 @@ func newRunCommand(deps Dependencies) *cobra.Command {
 			if state, err := requireLiveSandbox(cmd, cfg, manager); err != nil {
 				return err
 			} else if runnerActive(state.Runner) {
+				stopCommand := "honch sandbox stop " + state.Runner.Adapter
+				if state.Runner.Adapter == "esp-idf" {
+					stopCommand = "honch sandbox qemu stop"
+				}
 				return errors.New(ui.FormatError("sandbox runner is already active", []ui.Row{
 					{Key: "runner", Value: state.Runner.Adapter},
-					{Key: "next", Value: "stop the active sandbox before starting another runner"},
-					{Key: "command", Value: "honch sandbox stop"},
+					{Key: "next", Value: "stop the active runner before starting another one"},
+					{Key: "command", Value: stopCommand},
 				}))
 			}
 			registry, err := adapter.LoadRegistry(root)

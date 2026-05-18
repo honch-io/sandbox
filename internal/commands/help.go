@@ -51,7 +51,7 @@ func sandboxHelpSections() []ui.CommandSection {
 			Name: "Stack",
 			Commands: []ui.CommandRow{
 				{Name: "start", Description: "Start the local Honch stack"},
-				{Name: "stop", Description: "Stop sandbox services"},
+				{Name: "stop", Description: "Stop sandbox services or a runner"},
 				{Name: "status", Description: "Show health and session state"},
 				{Name: "update", Description: "Fast-forward clean sibling repos"},
 			},

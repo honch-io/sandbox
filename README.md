@@ -27,6 +27,8 @@ go build -o honch ./cmd/honch
 ./honch sandbox flush
 ./honch sandbox events list
 ./honch sandbox stop
+./honch sandbox stop c-core
+./honch sandbox qemu stop
 ```
 
 If you build the CLI locally and want it on your `PATH`, run `./honch install`.
@@ -46,7 +48,7 @@ plan to run the ESP-IDF adapter.
 | Install ESP-IDF/QEMU tools | `./honch sandbox qemu install` |
 | Pull local Docker images | `./honch sandbox images pull` |
 | Start the sandbox stack | `./honch sandbox start` |
-| Stop the sandbox stack | `./honch sandbox stop` |
+| Stop the sandbox stack or runner | `./honch sandbox stop` |
 | Run the C/POSIX harness | `./honch sandbox run c-core --detach` |
 | Run the ESP-IDF harness | `./honch sandbox run esp-idf --detach` |
 | Drive the harness | `battery`, `network`, `track`, `flush`, `reset` |
@@ -100,6 +102,7 @@ For a normal contributor loop:
 3. Drive behavior with `battery`, `network`, `track`, `flush`, or `reset`.
 4. Inspect rows with `./honch sandbox events list`.
 5. Stop everything with `./honch sandbox stop`.
+6. Stop just the active runner with `./honch sandbox stop c-core` or `./honch sandbox qemu stop`.
 
 Examples:
 
@@ -190,6 +193,7 @@ go build -o honch ./cmd/honch
 ./honch sandbox battery --level 8
 ./honch sandbox track sdk.esp_idf_smoke --properties '{"source":"qemu"}'
 ./honch sandbox flush
+./honch sandbox qemu stop
 
 ./honch sandbox events list
 ./honch sandbox logs device
