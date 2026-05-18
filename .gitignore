@@ -13,7 +13,7 @@
 
 # Go build and test outputs
 bin/
-honch
+/honch
 *.test
 *.out
 *.coverprofile
