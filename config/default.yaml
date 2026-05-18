@@ -2,6 +2,10 @@ repos:
   capture: ../capture
   platform: ../platform
   worker: ../worker
+repo_sources:
+  capture: https://github.com/honch-io/capture.git
+  platform: https://github.com/honch-io/platform.git
+  worker: https://github.com/honch-io/worker.git
 ports:
   capture: 8001
   worker: 8080

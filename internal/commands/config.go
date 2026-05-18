@@ -47,6 +47,14 @@ var configSections = []configSection{
 		},
 	},
 	{
+		Name: "repo sources",
+		Fields: []configField{
+			{Key: "repo_sources.capture", Name: "capture", TypeLabel: "url", Kind: configFieldString, Path: []string{"repo_sources", "capture"}, Read: func(cfg config.Config) any { return cfg.RepoSources.Capture }},
+			{Key: "repo_sources.platform", Name: "platform", TypeLabel: "url", Kind: configFieldString, Path: []string{"repo_sources", "platform"}, Read: func(cfg config.Config) any { return cfg.RepoSources.Platform }},
+			{Key: "repo_sources.worker", Name: "worker", TypeLabel: "url", Kind: configFieldString, Path: []string{"repo_sources", "worker"}, Read: func(cfg config.Config) any { return cfg.RepoSources.Worker }},
+		},
+	},
+	{
 		Name: "ports",
 		Fields: []configField{
 			{Key: "ports.capture", Name: "capture", TypeLabel: "int", Kind: configFieldInt, Path: []string{"ports", "capture"}, Read: func(cfg config.Config) any { return cfg.Ports.Capture }},
@@ -264,6 +272,11 @@ func starterConfigContent(cfg config.Config) string {
 		Platform string `yaml:"platform"`
 		Worker   string `yaml:"worker"`
 	}
+	type starterRepoSources struct {
+		Capture  string `yaml:"capture"`
+		Platform string `yaml:"platform"`
+		Worker   string `yaml:"worker"`
+	}
 	type starterPorts struct {
 		Capture    int `yaml:"capture"`
 		Worker     int `yaml:"worker"`
@@ -278,14 +291,20 @@ func starterConfigContent(cfg config.Config) string {
 		StateDir           string `yaml:"state_dir"`
 	}
 	content, err := yaml.Marshal(struct {
-		Repos   starterRepos   `yaml:"repos"`
-		Ports   starterPorts   `yaml:"ports"`
-		Sandbox starterSandbox `yaml:"sandbox"`
+		Repos       starterRepos       `yaml:"repos"`
+		RepoSources starterRepoSources `yaml:"repo_sources"`
+		Ports       starterPorts       `yaml:"ports"`
+		Sandbox     starterSandbox     `yaml:"sandbox"`
 	}{
 		Repos: starterRepos{
 			Capture:  cfg.Repos.Capture,
 			Platform: cfg.Repos.Platform,
 			Worker:   cfg.Repos.Worker,
+		},
+		RepoSources: starterRepoSources{
+			Capture:  cfg.RepoSources.Capture,
+			Platform: cfg.RepoSources.Platform,
+			Worker:   cfg.RepoSources.Worker,
 		},
 		Ports: starterPorts{
 			Capture:    cfg.Ports.Capture,

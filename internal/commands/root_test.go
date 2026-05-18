@@ -878,7 +878,7 @@ func TestOnboardingCommandSavesRepoPaths(t *testing.T) {
 	platform := filepath.Join(rootDir, "repos", "platform")
 	worker := filepath.Join(rootDir, "repos", "worker")
 
-	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("y\n" + capture + "\n" + platform + "\n" + worker + "\nn\nn\n")})
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("n\ny\n" + capture + "\n" + platform + "\n" + worker + "\nn\nn\n")})
 	root.SetArgs([]string{"--plain", "onboarding"})
 	var out bytes.Buffer
 	root.SetOut(&out)
@@ -894,6 +894,85 @@ func TestOnboardingCommandSavesRepoPaths(t *testing.T) {
 	for _, want := range []string{capture, platform, worker} {
 		if !strings.Contains(string(data), want) {
 			t.Fatalf("updated config missing %q:\n%s", want, string(data))
+		}
+	}
+}
+
+func TestOnboardingCommandCanCloneMissingRepos(t *testing.T) {
+	rootDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(rootDir, "adapters"),
+		filepath.Join(rootDir, "harnesses"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var calls []string
+	prevClone := cloneSiblingRepo
+	cloneSiblingRepo = func(ctx context.Context, stdout io.Writer, stderr io.Writer, source siblingRepoSource, target string) error {
+		calls = append(calls, source.Name+"="+source.URL+"->"+target)
+		return os.MkdirAll(target, 0o755)
+	}
+	t.Cleanup(func() { cloneSiblingRepo = prevClone })
+
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("y\n\nn\nn\n")})
+	root.SetArgs([]string{"--plain", "onboarding"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("onboarding returned error: %v\n%s", err, out.String())
+	}
+	parent := filepath.Dir(rootDir)
+	wants := []string{
+		"capture=https://github.com/honch-io/capture.git->" + filepath.Join(parent, "capture"),
+		"platform=https://github.com/honch-io/platform.git->" + filepath.Join(parent, "platform"),
+		"worker=https://github.com/honch-io/worker.git->" + filepath.Join(parent, "worker"),
+	}
+	if strings.Join(calls, "\n") != strings.Join(wants, "\n") {
+		t.Fatalf("clone calls mismatch:\n got: %q\nwant: %q", calls, wants)
+	}
+	data, err := os.ReadFile(filepath.Join(rootDir, ".honch-sandbox.yaml"))
+	if err != nil {
+		t.Fatalf("read updated config: %v\n%s", err, out.String())
+	}
+	for _, want := range []string{
+		"capture: " + filepath.Join(parent, "capture"),
+		"platform: " + filepath.Join(parent, "platform"),
+		"worker: " + filepath.Join(parent, "worker"),
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("updated config missing %q:\n%s", want, string(data))
+		}
+	}
+	for _, want := range []string{"Clone missing Honch repos now? [y/N]", "Clone destination parent"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("onboarding output missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func TestInstallScriptBootstrapsLatestReleaseAndRunsOnboarding(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "scripts", "install.sh"))
+	if err != nil {
+		t.Fatalf("read install script: %v", err)
+	}
+	script := string(data)
+	for _, want := range []string{
+		"releases/latest/download/honch-${os_name}-${arch_name}",
+		"curl -fL",
+		"~/.local/bin",
+		"honch onboarding",
+		"--no-install",
+	} {
+		if !strings.Contains(script, want) {
+			t.Fatalf("install script missing %q:\n%s", want, script)
 		}
 	}
 }

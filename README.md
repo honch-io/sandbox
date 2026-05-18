@@ -15,7 +15,24 @@ SDK harness -> local proxy -> capture -> worker -> ClickHouse
 
 ## Install And First Launch
 
-There are three ways to get a usable CLI:
+The easiest install path is the release installer:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/honch-io/sandbox/main/scripts/install.sh | sh
+```
+
+The installer detects your OS and CPU, downloads the latest
+`honch-<os>-<arch>` release binary, asks before copying it to
+`~/.local/bin/honch`, then runs `honch onboarding`.
+
+Use `--no-install` if you want to try the CLI from a temporary download without
+copying it into your PATH:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/honch-io/sandbox/main/scripts/install.sh | sh -s -- --no-install
+```
+
+There are also manual paths:
 
 | Path | What it is |
 | --- | --- |
@@ -36,7 +53,8 @@ confirmation. After that, the first `honch` launch opens the onboarding wizard.
 
 The wizard is the right place to:
 
-- point Honch at existing `capture`, `platform`, and `worker` checkouts
+- clone missing `capture`, `platform`, and `worker` repos
+- point Honch at existing checkouts if you already have them
 - run `honch sandbox setup` to install missing host tools, images, and QEMU
 - copy the binary into `~/.local/bin/honch` if you skipped the install step
 
@@ -85,13 +103,17 @@ honch-io/
 ```
 
 The first-launch wizard asks for these paths if they are not already in the
-default locations.
+default locations. It can also clone missing sibling repos into the parent
+directory of this checkout.
 
 Defaults live in `config/default.yaml`:
 
 - capture repo: `../capture`
 - platform repo: `../platform`
 - worker repo: `../worker`
+- capture source: `https://github.com/honch-io/capture.git`
+- platform source: `https://github.com/honch-io/platform.git`
+- worker source: `https://github.com/honch-io/worker.git`
 - capture port: `8001`
 - worker port: `8080`
 - ClickHouse port: `8123`

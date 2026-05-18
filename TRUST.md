@@ -13,8 +13,10 @@ release artifacts.
 - `honch install` asks before copying the built binary to `~/.local/bin/honch`
   and reminds you to reload your shell.
 - `honch onboarding` is the first-launch setup wizard. It may update sandbox
-  repo paths, run setup actions, and copy the binary into `~/.local/bin/honch`,
-  but only after explicit confirmation.
+  repo paths, clone missing sibling repos, run setup actions, and copy the
+  binary into `~/.local/bin/honch`, but only after explicit confirmation.
+- `scripts/install.sh` downloads the latest release binary and starts
+  onboarding. It asks before copying the binary into `~/.local/bin`.
 
 `--yes` is allowed for scripted setup, but it must never be the default.
 
@@ -33,11 +35,11 @@ honch sandbox update
 `update` must only fetch and fast-forward clean sibling repos. It must not
 reset, clean, force checkout, or overwrite dirty worktrees.
 
-The sandbox expects sibling repos beside the SDK checkout:
+The sandbox expects sibling repos beside the sandbox checkout:
 
 ```text
 honch-io/
-  SDK/
+  sandbox/
   capture/
   platform/
   worker/
