@@ -17,6 +17,18 @@ import (
 	"github.com/honch/sdk/tools/sandbox/internal/ui"
 )
 
+func assertContainsInOrder(t *testing.T, text string, wants []string) {
+	t.Helper()
+	start := 0
+	for _, want := range wants {
+		index := strings.Index(text[start:], want)
+		if index < 0 {
+			t.Fatalf("output missing %q after byte %d:\n%s", want, start, text)
+		}
+		start += index + len(want)
+	}
+}
+
 func TestRootCommandExposesSandboxContract(t *testing.T) {
 	root := NewRootCommand(Dependencies{})
 	root.SetArgs([]string{"sandbox", "--help"})
@@ -855,6 +867,46 @@ func TestOnboardingAutoLaunchRunsOnce(t *testing.T) {
 	if strings.Contains(secondOut.String(), "Honch onboarding") {
 		t.Fatalf("onboarding repeated after completion:\n%s", secondOut.String())
 	}
+}
+
+func TestOnboardingCommandUsesGuidedStepFlow(t *testing.T) {
+	rootDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(rootDir, "adapters"),
+		filepath.Join(rootDir, "harnesses"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("n\nn\nn\nn\n")})
+	root.SetArgs([]string{"--plain", "onboarding"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("onboarding returned error: %v\n%s", err, out.String())
+	}
+	output := ui.StripANSI(out.String())
+	if strings.Contains(output, "Honch setup status") {
+		t.Fatalf("onboarding still dumps setup status before the guided flow:\n%s", output)
+	}
+	assertContainsInOrder(t, output, []string{
+		"Step 1 of 4: Welcome",
+		"Step 2 of 4: Repositories",
+		"Clone missing Honch repos now? [y/N]",
+		"Update sibling repo paths now? [y/N]",
+		"Step 3 of 4: Setup",
+		"Run the recommended sandbox setup now? [y/N]",
+		"Step 4 of 4: Install",
+		"Install honch to",
+		"Honch onboarding complete",
+	})
 }
 
 func TestOnboardingCommandSavesRepoPaths(t *testing.T) {

@@ -84,19 +84,18 @@ func runOnboardingWizard(ctx context.Context, stdin io.Reader, stdout io.Writer,
 		return err
 	}
 
-	_, _ = fmt.Fprint(stdout, ui.FormatSectionsWrapped("Honch onboarding", []ui.Section{
-		{
-			Name: "workspace",
-			Rows: []ui.Row{
-				{Key: "repo root", Value: root},
-				{Key: "config", Value: configFilePath(root)},
-				{Key: "install target", Value: target},
-			},
+	printOnboardingStep(stdout, 1, 4, "Welcome", []ui.Section{{
+		Rows: []ui.Row{
+			{Key: "workspace", Value: root},
+			{Key: "config", Value: configFilePath(root)},
+			{Key: "this wizard", Value: "connects required repos, prepares the local stack, and can install the honch binary"},
 		},
-		{Name: "current state", Rows: onboardingRepoRows(root, cfg)},
-	}))
-	_, _ = fmt.Fprint(stdout, ui.FormatSectionsWrapped("Honch setup status", report.Sections()))
+	}})
 
+	printOnboardingStep(stdout, 2, 4, "Repositories", []ui.Section{{
+		Name: "current paths",
+		Rows: onboardingRepoRows(root, cfg),
+	}})
 	if needsRepoUpdate(report.Repos) {
 		ok, err := prompts.Confirm("Clone missing Honch repos now?")
 		if err != nil {
@@ -120,6 +119,10 @@ func runOnboardingWizard(ctx context.Context, stdin io.Reader, stdout io.Writer,
 		report = buildSandboxDoctorReport(root, cfg)
 	}
 
+	printOnboardingStep(stdout, 3, 4, "Setup", []ui.Section{{
+		Name: "recommended fixes",
+		Rows: onboardingSetupRows(report),
+	}})
 	ok, err := prompts.Confirm("Run the recommended sandbox setup now?")
 	if err != nil {
 		return err
@@ -130,6 +133,12 @@ func runOnboardingWizard(ctx context.Context, stdin io.Reader, stdout io.Writer,
 		}
 	}
 
+	printOnboardingStep(stdout, 4, 4, "Install", []ui.Section{{
+		Rows: []ui.Row{
+			{Key: "target", Value: target},
+			{Key: "effect", Value: "copies the current honch executable into your user bin directory"},
+		},
+	}})
 	ok, err = prompts.Confirm(fmt.Sprintf("Install honch to %s now?", target))
 	if err != nil {
 		return err
@@ -151,6 +160,18 @@ func runOnboardingWizard(ctx context.Context, stdin io.Reader, stdout io.Writer,
 		},
 	}}))
 	return nil
+}
+
+func printOnboardingStep(stdout io.Writer, current int, total int, name string, sections []ui.Section) {
+	title := fmt.Sprintf("Step %d of %d: %s", current, total, name)
+	_, _ = fmt.Fprint(stdout, ui.FormatSectionsWrapped(title, sections))
+}
+
+func onboardingSetupRows(report sandboxDoctorReport) []ui.Row {
+	if report.Ready() {
+		return []ui.Row{{Key: "status", Value: "ready"}}
+	}
+	return report.Missing
 }
 
 func onboardingRepoRows(root string, cfg config.Config) []ui.Row {
