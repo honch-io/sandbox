@@ -15,8 +15,9 @@ release artifacts.
 - `honch onboarding` is the first-launch setup wizard. It may update sandbox
   repo paths, clone missing sibling repos, run setup actions, and copy the
   binary into `~/.local/bin/honch`, but only after explicit confirmation.
-- `scripts/install.sh` downloads the latest release binary and starts
-  onboarding. It asks before copying the binary into `~/.local/bin`.
+- `scripts/install.sh` downloads the latest release binary, prepares a sandbox
+  checkout, and starts onboarding from that checkout. It asks before copying
+  the binary into `~/.local/bin`.
 
 `--yes` is allowed for scripted setup, but it must never be the default.
 

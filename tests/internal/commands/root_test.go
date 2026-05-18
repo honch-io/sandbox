@@ -29,6 +29,24 @@ func assertContainsInOrder(t *testing.T, text string, wants []string) {
 	}
 }
 
+func createMinimalSandboxRoot(t *testing.T, root string) {
+	t.Helper()
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(root, "adapters"),
+		filepath.Join(root, "harnesses"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestRootCommandExposesSandboxContract(t *testing.T) {
 	root := NewRootCommand(Dependencies{})
 	root.SetArgs([]string{"sandbox", "--help"})
@@ -69,17 +87,7 @@ func TestRootCommandExposesSandboxContract(t *testing.T) {
 
 func TestLoadRuntimeFindsRepoRootFromNestedDirectory(t *testing.T) {
 	repoRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(repoRoot, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{
-		filepath.Join(repoRoot, "adapters"),
-		filepath.Join(repoRoot, "harnesses", "c-core"),
-	} {
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	createMinimalSandboxRoot(t, repoRoot)
 	if err := os.WriteFile(filepath.Join(repoRoot, "README.md"), []byte("test repo\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -110,21 +118,8 @@ func TestLoadRuntimeFindsRepoRootFromNestedDirectory(t *testing.T) {
 func TestLoadRuntimeUsesInstalledSandboxRootWhenCurrentDirectoryIsOutsideCheckout(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	installedRoot := filepath.Join(home, ".local", "share", "honch", "sandbox")
-	if err := os.MkdirAll(installedRoot, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(installedRoot, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{
-		filepath.Join(installedRoot, "adapters"),
-		filepath.Join(installedRoot, "harnesses"),
-	} {
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	installedRoot := filepath.Join(home, filepath.FromSlash(installedSandboxRootSuffix))
+	createMinimalSandboxRoot(t, installedRoot)
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -878,21 +873,7 @@ func TestHiddenInstallCommandCanBeCancelled(t *testing.T) {
 
 func TestOnboardingAutoLaunchRunsOnce(t *testing.T) {
 	rootDir := t.TempDir()
-	for _, path := range []string{
-		filepath.Join(rootDir, "go.mod"),
-		filepath.Join(rootDir, "adapters"),
-		filepath.Join(rootDir, "harnesses"),
-	} {
-		if strings.HasSuffix(path, "go.mod") {
-			if err := os.WriteFile(path, []byte("module example.com/test\n"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			continue
-		}
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	createMinimalSandboxRoot(t, rootDir)
 
 	prevGate := onboardingGate
 	onboardingGate = func(io.Reader, io.Writer) bool { return true }
@@ -931,17 +912,7 @@ func TestOnboardingAutoLaunchRunsOnce(t *testing.T) {
 
 func TestOnboardingCommandUsesGuidedStepFlow(t *testing.T) {
 	rootDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{
-		filepath.Join(rootDir, "adapters"),
-		filepath.Join(rootDir, "harnesses"),
-	} {
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	createMinimalSandboxRoot(t, rootDir)
 
 	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("\nn\nn\nn\nn\n")})
 	root.SetArgs([]string{"--plain", "onboarding"})
@@ -972,17 +943,7 @@ func TestOnboardingCommandUsesGuidedStepFlow(t *testing.T) {
 
 func TestOnboardingCommandCanExitBeforeSavingMarker(t *testing.T) {
 	rootDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{
-		filepath.Join(rootDir, "adapters"),
-		filepath.Join(rootDir, "harnesses"),
-	} {
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	createMinimalSandboxRoot(t, rootDir)
 
 	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("q\n")})
 	root.SetArgs([]string{"--plain", "onboarding"})
@@ -1005,17 +966,7 @@ func TestOnboardingCommandCanExitBeforeSavingMarker(t *testing.T) {
 
 func TestAutoOnboardingExitStopsRequestedCommand(t *testing.T) {
 	rootDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{
-		filepath.Join(rootDir, "adapters"),
-		filepath.Join(rootDir, "harnesses"),
-	} {
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	createMinimalSandboxRoot(t, rootDir)
 
 	prevGate := onboardingGate
 	onboardingGate = func(io.Reader, io.Writer) bool { return true }
@@ -1042,17 +993,7 @@ func TestAutoOnboardingExitStopsRequestedCommand(t *testing.T) {
 
 func TestOnboardingCommandCanGoBackToPreviousStep(t *testing.T) {
 	rootDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{
-		filepath.Join(rootDir, "adapters"),
-		filepath.Join(rootDir, "harnesses"),
-	} {
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	createMinimalSandboxRoot(t, rootDir)
 
 	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("\nn\nn\nb\nn\nn\nn\n")})
 	root.SetArgs([]string{"--plain", "onboarding"})
@@ -1074,12 +1015,8 @@ func TestOnboardingCommandCanGoBackToPreviousStep(t *testing.T) {
 
 func TestOnboardingCommandSavesRepoPaths(t *testing.T) {
 	rootDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	createMinimalSandboxRoot(t, rootDir)
 	for _, path := range []string{
-		filepath.Join(rootDir, "adapters"),
-		filepath.Join(rootDir, "harnesses"),
 		filepath.Join(rootDir, "repos", "capture"),
 		filepath.Join(rootDir, "repos", "platform"),
 		filepath.Join(rootDir, "repos", "worker"),
@@ -1115,17 +1052,7 @@ func TestOnboardingCommandSavesRepoPaths(t *testing.T) {
 
 func TestOnboardingCommandCanCloneMissingRepos(t *testing.T) {
 	rootDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{
-		filepath.Join(rootDir, "adapters"),
-		filepath.Join(rootDir, "harnesses"),
-	} {
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	createMinimalSandboxRoot(t, rootDir)
 
 	var calls []string
 	prevClone := cloneSiblingRepo
@@ -1175,19 +1102,9 @@ func TestOnboardingCommandCanCloneMissingRepos(t *testing.T) {
 
 func TestOnboardingCommandClonesReposWithBlankConfiguredPaths(t *testing.T) {
 	rootDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	createMinimalSandboxRoot(t, rootDir)
 	if err := os.WriteFile(filepath.Join(rootDir, ".honch-sandbox.yaml"), []byte("repos:\n  capture: ''\n  platform: ''\n  worker: ''\n"), 0o600); err != nil {
 		t.Fatal(err)
-	}
-	for _, path := range []string{
-		filepath.Join(rootDir, "adapters"),
-		filepath.Join(rootDir, "harnesses"),
-	} {
-		if err := os.MkdirAll(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
 	}
 
 	var calls []string

@@ -10,7 +10,8 @@ usage() {
   cat <<'USAGE'
 Usage: install.sh [--no-install] [--install-dir DIR] [--sandbox-dir DIR]
 
-Downloads the latest Honch CLI release, prepares a sandbox checkout, and starts `honch onboarding`.
+Downloads the latest Honch CLI release, prepares a sandbox checkout,
+and starts `honch onboarding`.
 Default install location: ~/.local/bin/honch.
 Default sandbox checkout: ~/.local/share/honch/sandbox.
 USAGE
