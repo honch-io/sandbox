@@ -1,1 +1,0 @@
-../../../internal/commands/scenario.go

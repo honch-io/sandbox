@@ -1,1 +1,0 @@
-../../../internal/adapter/adapter.go

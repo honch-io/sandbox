@@ -1130,7 +1130,7 @@ func TestOnboardingCommandClonesReposWithBlankConfiguredPaths(t *testing.T) {
 }
 
 func TestInstallScriptBootstrapsLatestReleaseAndRunsOnboarding(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "..", "scripts", "install.sh"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "scripts", "install.sh"))
 	if err != nil {
 		t.Fatalf("read install script: %v", err)
 	}
