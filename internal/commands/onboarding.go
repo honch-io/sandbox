@@ -335,6 +335,10 @@ func missingSiblingRepoSources(root string, cfg config.Config) []siblingRepoSour
 		if strings.TrimSpace(source.URL) == "" {
 			continue
 		}
+		if strings.TrimSpace(source.Path) == "" {
+			missing = append(missing, source)
+			continue
+		}
 		path := resolveSandboxPath(root, source.Path)
 		info, err := os.Stat(path)
 		if err == nil && info.IsDir() {

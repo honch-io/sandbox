@@ -1153,6 +1153,45 @@ func TestOnboardingCommandCanCloneMissingRepos(t *testing.T) {
 	}
 }
 
+func TestOnboardingCommandClonesReposWithBlankConfiguredPaths(t *testing.T) {
+	rootDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rootDir, ".honch-sandbox.yaml"), []byte("repos:\n  capture: ''\n  platform: ''\n  worker: ''\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(rootDir, "adapters"),
+		filepath.Join(rootDir, "harnesses"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var calls []string
+	prevClone := cloneSiblingRepo
+	cloneSiblingRepo = func(ctx context.Context, stdout io.Writer, stderr io.Writer, source siblingRepoSource, target string) error {
+		calls = append(calls, source.Name)
+		return os.MkdirAll(target, 0o755)
+	}
+	t.Cleanup(func() { cloneSiblingRepo = prevClone })
+
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("\ny\n\nn\nn\n")})
+	root.SetArgs([]string{"--plain", "onboarding"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("onboarding returned error: %v\n%s", err, out.String())
+	}
+	if strings.Join(calls, ",") != "capture,platform,worker" {
+		t.Fatalf("clone calls = %q, want capture,platform,worker\n%s", calls, out.String())
+	}
+}
+
 func TestInstallScriptBootstrapsLatestReleaseAndRunsOnboarding(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "..", "scripts", "install.sh"))
 	if err != nil {
