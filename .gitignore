@@ -25,6 +25,9 @@ coverage.out
 .honch-sandbox/
 .honch-sandbox.yaml
 
+# Harness build outputs
+harnesses/esp-idf/build/
+
 # Logs and temp files
 *.log
 tmp/

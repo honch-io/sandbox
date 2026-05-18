@@ -10,6 +10,8 @@ import (
 	"github.com/honch/sdk/tools/sandbox/internal/ui"
 )
 
+const installedSandboxRootSuffix = ".local/share/honch/sandbox"
+
 func loadRuntime(deps Dependencies) (string, config.Config, session.Manager, error) {
 	root := deps.RootDir
 	if root == "" {
@@ -18,6 +20,11 @@ func loadRuntime(deps Dependencies) (string, config.Config, session.Manager, err
 			return "", config.Config{}, session.Manager{}, err
 		}
 		root = findRepoRoot(wd)
+		if !isSandboxRepoRoot(root) {
+			if installedRoot, ok := defaultInstalledSandboxRoot(); ok && isSandboxRepoRoot(installedRoot) {
+				root = installedRoot
+			}
+		}
 	}
 	cfg, err := config.Load(root)
 	if err != nil {
@@ -25,6 +32,14 @@ func loadRuntime(deps Dependencies) (string, config.Config, session.Manager, err
 	}
 	manager := session.NewManager(filepath.Join(root, cfg.Sandbox.StateDir, "session.json"))
 	return root, cfg, manager, nil
+}
+
+func defaultInstalledSandboxRoot() (string, bool) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", false
+	}
+	return filepath.Join(home, filepath.FromSlash(installedSandboxRootSuffix)), true
 }
 
 func findRepoRoot(start string) string {

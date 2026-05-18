@@ -13,27 +13,58 @@ The execution path is real end to end:
 SDK harness -> local proxy -> capture -> worker -> ClickHouse
 ```
 
-## Quick Start
+## Install And First Launch
+
+The easiest install path is the release installer:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/honch-io/sandbox/main/scripts/install.sh | sh
+```
+
+The installer detects your OS and CPU, downloads the latest
+`honch-<os>-<arch>` release binary, asks before copying it to
+`~/.local/bin/honch`, prepares a sandbox checkout under
+`~/.local/share/honch/sandbox`, then runs `honch onboarding` from that checkout.
+
+Use `--no-install` if you want to try the CLI from a temporary download without
+copying it into your PATH:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/honch-io/sandbox/main/scripts/install.sh | sh -s -- --no-install
+```
+
+Use `--sandbox-dir <dir>` if you want the sandbox checkout somewhere else.
+
+There are also manual paths:
+
+| Path | What it is |
+| --- | --- |
+| Build from git | Compile the current checkout and use the binary in place |
+| Copy into PATH | Install the built binary to `~/.local/bin/honch` |
+| Release binary | Download a prebuilt GitHub release artifact |
+
+If you already cloned this repo, the shortest path is:
 
 ```sh
 go build -o honch ./cmd/honch
-
-./honch sandbox doctor
-./honch sandbox images pull
-./honch sandbox start
-./honch sandbox run c-core --detach
-./honch sandbox battery --level 8
-./honch sandbox track camera.motion --properties '{"zone":"porch"}'
-./honch sandbox flush
-./honch sandbox events list
-./honch sandbox stop
-./honch sandbox stop c-core
-./honch sandbox qemu stop
+./honch install
+honch
 ```
 
-If you build the CLI locally and want it on your `PATH`, run `./honch install`.
-It copies the current binary to `~/.local/bin/honch` after confirmation and
-reminds you to reload your shell.
+`./honch install` copies the current binary to `~/.local/bin/honch` after
+confirmation. After that, the first `honch` launch opens the onboarding wizard.
+
+The wizard is the right place to:
+
+- clone missing `capture`, `platform`, and `worker` repos
+- point Honch at existing checkouts if you already have them
+- run `honch sandbox setup` to install missing host tools, images, and QEMU
+- copy the binary into `~/.local/bin/honch` if you skipped the install step
+
+If you want to rerun the wizard later, use `honch onboarding`.
+
+If you prefer a release binary, download the tagged `honch-<os>-<arch>` asset
+from GitHub Releases and run the same first-launch flow after unpacking it.
 
 Use `./honch sandbox qemu doctor` and `./honch sandbox qemu install` when you
 plan to run the ESP-IDF adapter.
@@ -42,6 +73,7 @@ plan to run the ESP-IDF adapter.
 
 | Goal | Command |
 | --- | --- |
+| Run the first-launch wizard | `honch onboarding` |
 | Check host prerequisites | `./honch sandbox doctor` |
 | Install supported tools | `./honch sandbox setup` |
 | Check ESP-IDF/QEMU setup | `./honch sandbox qemu doctor` |
@@ -63,27 +95,34 @@ logs.
 
 ## Repository Layout
 
-The CLI expects the local Honch repos to sit beside this SDK repo:
+The CLI expects the local Honch repos to sit beside this sandbox checkout:
 
 ```text
 honch-io/
-  SDK/
+  sandbox/
   capture/
   platform/
   worker/
 ```
+
+The first-launch wizard asks for these paths if they are not already in the
+default locations. It can also clone missing sibling repos into the parent
+directory of this checkout.
 
 Defaults live in `config/default.yaml`:
 
 - capture repo: `../capture`
 - platform repo: `../platform`
 - worker repo: `../worker`
+- capture source: `https://github.com/honch-io/capture.git`
+- platform source: `https://github.com/honch-io/platform.git`
+- worker source: `https://github.com/honch-io/worker.git`
 - capture port: `8001`
 - worker port: `8080`
 - ClickHouse port: `8123`
 - proxy port: `18080`
 
-Override those values from the SDK repo root with `.honch-sandbox.yaml` when
+Override those values from the sandbox repo root with `.honch-sandbox.yaml` when
 your local checkout is different.
 
 Use `./honch sandbox flags` to inspect command-specific flags without opening
@@ -116,12 +155,6 @@ Examples:
 
 The tracked event should appear in `events list`. A low battery level also
 emits the SDK battery event, so seeing both rows is expected.
-
-## Releases
-
-Tagged builds publish downloadable `honch-<os>-<arch>` binaries to GitHub
-Releases. Use those when you want a ready-to-run CLI without building it
-locally.
 
 ## Harnesses
 

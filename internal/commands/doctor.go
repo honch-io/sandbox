@@ -91,7 +91,7 @@ func missingDoctorRows(host []ui.Row, repos []ui.Row, images []ui.Row, qemuReady
 	}
 	for _, row := range repos {
 		if fmt.Sprint(row.Value) == "missing" {
-			missing = append(missing, ui.Row{Key: row.Key, Value: "clone sibling repo beside SDK"})
+			missing = append(missing, ui.Row{Key: row.Key, Value: "clone sibling repo beside sandbox"})
 		}
 	}
 	for _, row := range images {

@@ -12,13 +12,20 @@ import (
 )
 
 type Config struct {
-	Repos   ReposConfig   `mapstructure:"repos"`
-	Ports   PortsConfig   `mapstructure:"ports"`
-	Sandbox SandboxConfig `mapstructure:"sandbox"`
-	Stack   StackConfig   `mapstructure:"stack"`
+	Repos       ReposConfig       `mapstructure:"repos"`
+	RepoSources RepoSourcesConfig `mapstructure:"repo_sources"`
+	Ports       PortsConfig       `mapstructure:"ports"`
+	Sandbox     SandboxConfig     `mapstructure:"sandbox"`
+	Stack       StackConfig       `mapstructure:"stack"`
 }
 
 type ReposConfig struct {
+	Capture  string `mapstructure:"capture"`
+	Platform string `mapstructure:"platform"`
+	Worker   string `mapstructure:"worker"`
+}
+
+type RepoSourcesConfig struct {
 	Capture  string `mapstructure:"capture"`
 	Platform string `mapstructure:"platform"`
 	Worker   string `mapstructure:"worker"`
@@ -128,6 +135,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("repos.capture", "../capture")
 	v.SetDefault("repos.platform", "../platform")
 	v.SetDefault("repos.worker", "../worker")
+	v.SetDefault("repo_sources.capture", "https://github.com/honch-io/capture.git")
+	v.SetDefault("repo_sources.platform", "https://github.com/honch-io/platform.git")
+	v.SetDefault("repo_sources.worker", "https://github.com/honch-io/worker.git")
 	v.SetDefault("ports.capture", 8001)
 	v.SetDefault("ports.worker", 8080)
 	v.SetDefault("ports.clickhouse", 8123)

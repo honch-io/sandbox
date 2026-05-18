@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -10,10 +12,20 @@ import (
 	"github.com/spf13/pflag"
 )
 
-func installHelp(root *cobra.Command) {
+func installHelp(root *cobra.Command, deps Dependencies) {
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		if flag := cmd.Root().PersistentFlags().Lookup("plain"); flag != nil && flag.Changed {
 			ui.SetPlain(flag.Value.String() == "true")
+		}
+		if cmd.CommandPath() == "honch" {
+			if err := maybeRunOnboarding(cmd, deps); err != nil && !errors.Is(err, context.Canceled) {
+				if errors.Is(err, errOnboardingExited) {
+					return
+				}
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), ui.FormatError("onboarding failed", []ui.Row{
+					{Key: "error", Value: err.Error()},
+				}))
+			}
 		}
 		if cmd.CommandPath() == "honch sandbox" {
 			_, _ = fmt.Fprint(cmd.OutOrStdout(), ui.FormatGroupedCommandHelp(
@@ -41,7 +53,7 @@ func installHelp(root *cobra.Command) {
 		_, _ = fmt.Fprint(cmd.OutOrStdout(), ui.FormatCommandHelp(helpTitle(cmd), cmd.Short, commandUsage(cmd), commandFlagRows(cmd), visibleCommands(cmd)))
 	})
 	for _, child := range root.Commands() {
-		installHelp(child)
+		installHelp(child, deps)
 	}
 }
 
