@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+module="honch.dev/honch"
+version="${HONCH_VERSION:-latest}"
+
+if ! command -v go >/dev/null 2>&1; then
+  echo "Go is required to install honch." >&2
+  echo "Install Go first: https://go.dev/dl/" >&2
+  exit 1
+fi
+
+echo "Installing ${module}@${version}..."
+go install "${module}@${version}"
+
+gobin="$(go env GOBIN)"
+if [ -z "$gobin" ]; then
+  gobin="$(go env GOPATH)/bin"
+fi
+
+echo "Installed honch to ${gobin}/honch"
+
+case ":$PATH:" in
+  *":$gobin:"*) ;;
+  *)
+    echo
+    echo "If honch is not found, add Go's bin directory to PATH:"
+    echo "export PATH=\"\$PATH:${gobin}\""
+    ;;
+esac
