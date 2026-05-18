@@ -107,6 +107,46 @@ func TestLoadRuntimeFindsRepoRootFromNestedDirectory(t *testing.T) {
 	}
 }
 
+func TestLoadRuntimeUsesInstalledSandboxRootWhenCurrentDirectoryIsOutsideCheckout(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	installedRoot := filepath.Join(home, ".local", "share", "honch", "sandbox")
+	if err := os.MkdirAll(installedRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(installedRoot, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(installedRoot, "adapters"),
+		filepath.Join(installedRoot, "harnesses"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(cwd)
+	})
+	outside := t.TempDir()
+	if err := os.Chdir(outside); err != nil {
+		t.Fatal(err)
+	}
+
+	root, _, _, err := loadRuntime(Dependencies{})
+	if err != nil {
+		t.Fatalf("loadRuntime returned error: %v", err)
+	}
+	if resolvedPath(root) != resolvedPath(installedRoot) {
+		t.Fatalf("loadRuntime root = %q, want installed root %q", root, installedRoot)
+	}
+}
+
 func TestRootHelpUsesSandboxHelpFormat(t *testing.T) {
 	root := NewRootCommand(Dependencies{})
 	root.SetArgs([]string{"sandbox", "--help"})
@@ -1086,6 +1126,9 @@ func TestInstallScriptBootstrapsLatestReleaseAndRunsOnboarding(t *testing.T) {
 		"releases/latest/download/honch-${os_name}-${arch_name}",
 		"curl -fL",
 		"~/.local/bin",
+		"~/.local/share/honch/sandbox",
+		"git clone",
+		"cd \"$sandbox_dir\"",
 		"honch onboarding",
 		"--no-install",
 	} {

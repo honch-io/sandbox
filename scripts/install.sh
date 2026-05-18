@@ -4,13 +4,15 @@ set -eu
 repo="honch-io/sandbox"
 install=1
 install_dir="${HOME}/.local/bin"
+sandbox_dir="${HONCH_SANDBOX_ROOT:-${HOME}/.local/share/honch/sandbox}"
 
 usage() {
   cat <<'USAGE'
-Usage: install.sh [--no-install] [--install-dir DIR]
+Usage: install.sh [--no-install] [--install-dir DIR] [--sandbox-dir DIR]
 
-Downloads the latest Honch CLI release and starts `honch onboarding`.
+Downloads the latest Honch CLI release, prepares a sandbox checkout, and starts `honch onboarding`.
 Default install location: ~/.local/bin/honch.
+Default sandbox checkout: ~/.local/share/honch/sandbox.
 USAGE
 }
 
@@ -26,6 +28,14 @@ while [ "$#" -gt 0 ]; do
         exit 2
       fi
       install_dir="$2"
+      shift 2
+      ;;
+    --sandbox-dir)
+      if [ "$#" -lt 2 ]; then
+        echo "missing value for --sandbox-dir" >&2
+        exit 2
+      fi
+      sandbox_dir="$2"
       shift 2
       ;;
     -h|--help)
@@ -92,4 +102,25 @@ if [ "$install" -eq 1 ]; then
   esac
 fi
 
+is_sandbox_checkout() {
+  test -f "$1/go.mod" && test -d "$1/adapters" && test -d "$1/harnesses"
+}
+
+if is_sandbox_checkout "$PWD"; then
+  sandbox_dir="$PWD"
+elif is_sandbox_checkout "$sandbox_dir"; then
+  :
+elif [ -e "$sandbox_dir" ]; then
+  echo "sandbox checkout path exists but is not a sandbox repo: $sandbox_dir" >&2
+  exit 1
+else
+  if ! command -v git >/dev/null 2>&1; then
+    echo "git is required to prepare the sandbox checkout" >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "$sandbox_dir")"
+  git clone "https://github.com/${repo}.git" "$sandbox_dir"
+fi
+
+cd "$sandbox_dir"
 "$honch_cmd" onboarding

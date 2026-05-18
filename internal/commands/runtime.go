@@ -18,6 +18,11 @@ func loadRuntime(deps Dependencies) (string, config.Config, session.Manager, err
 			return "", config.Config{}, session.Manager{}, err
 		}
 		root = findRepoRoot(wd)
+		if !isSandboxRepoRoot(root) {
+			if installedRoot, ok := defaultInstalledSandboxRoot(); ok && isSandboxRepoRoot(installedRoot) {
+				root = installedRoot
+			}
+		}
 	}
 	cfg, err := config.Load(root)
 	if err != nil {
@@ -25,6 +30,14 @@ func loadRuntime(deps Dependencies) (string, config.Config, session.Manager, err
 	}
 	manager := session.NewManager(filepath.Join(root, cfg.Sandbox.StateDir, "session.json"))
 	return root, cfg, manager, nil
+}
+
+func defaultInstalledSandboxRoot() (string, bool) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", false
+	}
+	return filepath.Join(home, ".local", "share", "honch", "sandbox"), true
 }
 
 func findRepoRoot(start string) string {

@@ -23,7 +23,8 @@ curl -fsSL https://raw.githubusercontent.com/honch-io/sandbox/main/scripts/insta
 
 The installer detects your OS and CPU, downloads the latest
 `honch-<os>-<arch>` release binary, asks before copying it to
-`~/.local/bin/honch`, then runs `honch onboarding`.
+`~/.local/bin/honch`, prepares a sandbox checkout under
+`~/.local/share/honch/sandbox`, then runs `honch onboarding` from that checkout.
 
 Use `--no-install` if you want to try the CLI from a temporary download without
 copying it into your PATH:
@@ -31,6 +32,8 @@ copying it into your PATH:
 ```sh
 curl -fsSL https://raw.githubusercontent.com/honch-io/sandbox/main/scripts/install.sh | sh -s -- --no-install
 ```
+
+Use `--sandbox-dir <dir>` if you want the sandbox checkout somewhere else.
 
 There are also manual paths:
 
