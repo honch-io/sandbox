@@ -22,10 +22,19 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "honch",
 		Short:         "Honch developer tooling",
+		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			ui.SetPlain(plain)
+			if err := maybeRunOnboarding(cmd, deps); err != nil {
+				return err
+			}
+			return cmd.Help()
+		},
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			ui.SetPlain(plain)
+			return maybeRunOnboarding(cmd, deps)
 		},
 	}
 	root.PersistentFlags().BoolVar(&plain, "plain", false, "disable styled output")
@@ -33,8 +42,9 @@ func NewRootCommand(deps Dependencies) *cobra.Command {
 	root.SetOut(deps.Out)
 	root.SetErr(deps.Err)
 	root.AddCommand(newSandboxCommand(deps))
+	root.AddCommand(newOnboardingCommand(deps))
 	root.AddCommand(newInstallCommand())
-	installHelp(root)
+	installHelp(root, deps)
 	return root
 }
 

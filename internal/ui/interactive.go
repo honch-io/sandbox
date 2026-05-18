@@ -53,6 +53,31 @@ func PromptConfirm(in io.Reader, out io.Writer, prompt string) (bool, error) {
 	return result.confirmed(), nil
 }
 
+func PromptText(in io.Reader, out io.Writer, prompt string, defaultValue string) (string, error) {
+	if !IsInteractive(in, out) && !plain {
+		return "", ErrPromptCancelled
+	}
+	if defaultValue != "" {
+		prompt = fmt.Sprintf("%s [%s] ", prompt, defaultValue)
+	} else {
+		prompt = prompt + " "
+	}
+	_, _ = fmt.Fprint(out, prompt)
+	reader := bufio.NewReader(in)
+	answer, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	if !plain {
+		_, _ = fmt.Fprint(out, "\033[1A\r\033[2K")
+	}
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		return defaultValue, nil
+	}
+	return answer, nil
+}
+
 func PromptChoice(in io.Reader, out io.Writer, title string, options []PromptOption, selected int) (int, error) {
 	if !IsInteractive(in, out) || plain {
 		return -1, ErrPromptCancelled

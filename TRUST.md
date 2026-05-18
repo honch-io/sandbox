@@ -12,6 +12,9 @@ release artifacts.
 - `honch sandbox qemu install` asks before downloading or installing tools.
 - `honch install` asks before copying the built binary to `~/.local/bin/honch`
   and reminds you to reload your shell.
+- `honch onboarding` is the first-launch setup wizard. It may update sandbox
+  repo paths, run setup actions, and copy the binary into `~/.local/bin/honch`,
+  but only after explicit confirmation.
 
 `--yes` is allowed for scripted setup, but it must never be the default.
 

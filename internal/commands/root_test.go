@@ -733,8 +733,9 @@ func TestRootHelpHidesGeneratedHelpAndCompletion(t *testing.T) {
 	}
 	for _, want := range []string{
 		"  honch",
+		"    onboarding",
 		"    Tools",
-		"      sandbox ›   Run the Honch SDK E2E sandbox",
+		"      sandbox    ›   Run the Honch SDK E2E sandbox",
 	} {
 		if !strings.Contains(ui.StripANSI(help), want) {
 			t.Fatalf("help missing %q:\n%s", want, ui.StripANSI(help))
@@ -800,6 +801,100 @@ func TestHiddenInstallCommandCanBeCancelled(t *testing.T) {
 	target := filepath.Join(home, ".local", "bin", "honch")
 	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
 		t.Fatalf("install created a binary after cancellation, stat err: %v", statErr)
+	}
+}
+
+func TestOnboardingAutoLaunchRunsOnce(t *testing.T) {
+	rootDir := t.TempDir()
+	for _, path := range []string{
+		filepath.Join(rootDir, "go.mod"),
+		filepath.Join(rootDir, "adapters"),
+		filepath.Join(rootDir, "harnesses"),
+	} {
+		if strings.HasSuffix(path, "go.mod") {
+			if err := os.WriteFile(path, []byte("module example.com/test\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	prevGate := onboardingGate
+	onboardingGate = func(io.Reader, io.Writer) bool { return true }
+	t.Cleanup(func() { onboardingGate = prevGate })
+
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("n\nn\nn\nn\n")})
+	root.SetArgs([]string{"--plain"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("first launch onboarding returned error: %v\n%s", err, out.String())
+	}
+	marker := filepath.Join(rootDir, ".honch-sandbox", "onboarding.json")
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("onboarding marker missing: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "Honch onboarding") {
+		t.Fatalf("first launch did not show onboarding:\n%s", out.String())
+	}
+
+	second := NewRootCommand(Dependencies{RootDir: rootDir})
+	second.SetArgs([]string{"--plain"})
+	var secondOut bytes.Buffer
+	second.SetOut(&secondOut)
+	second.SetErr(&secondOut)
+
+	if err := second.Execute(); err != nil {
+		t.Fatalf("second launch returned error: %v\n%s", err, secondOut.String())
+	}
+	if strings.Contains(secondOut.String(), "Honch onboarding") {
+		t.Fatalf("onboarding repeated after completion:\n%s", secondOut.String())
+	}
+}
+
+func TestOnboardingCommandSavesRepoPaths(t *testing.T) {
+	rootDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootDir, "go.mod"), []byte("module example.com/test\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		filepath.Join(rootDir, "adapters"),
+		filepath.Join(rootDir, "harnesses"),
+		filepath.Join(rootDir, "repos", "capture"),
+		filepath.Join(rootDir, "repos", "platform"),
+		filepath.Join(rootDir, "repos", "worker"),
+	} {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	capture := filepath.Join(rootDir, "repos", "capture")
+	platform := filepath.Join(rootDir, "repos", "platform")
+	worker := filepath.Join(rootDir, "repos", "worker")
+
+	root := NewRootCommand(Dependencies{RootDir: rootDir, In: bytes.NewBufferString("y\n" + capture + "\n" + platform + "\n" + worker + "\nn\nn\n")})
+	root.SetArgs([]string{"--plain", "onboarding"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("onboarding returned error: %v\n%s", err, out.String())
+	}
+	data, err := os.ReadFile(filepath.Join(rootDir, ".honch-sandbox.yaml"))
+	if err != nil {
+		t.Fatalf("read updated config: %v\n%s", err, out.String())
+	}
+	for _, want := range []string{capture, platform, worker} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("updated config missing %q:\n%s", want, string(data))
+		}
 	}
 }
 
