@@ -1,0 +1,1 @@
+../../../internal/commands/onboarding.go
