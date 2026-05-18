@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -78,7 +77,7 @@ func shouldSkipAutoOnboarding(cmd *cobra.Command) bool {
 }
 
 func runOnboardingWizard(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer, root string, cfg config.Config) error {
-	prompts := newOnboardingPrompts(stdin, stdout)
+	prompts := ui.NewPromptSession(stdin, stdout)
 	report := buildSandboxDoctorReport(root, cfg)
 	target, err := defaultInstallTarget()
 	if err != nil {
@@ -99,7 +98,7 @@ func runOnboardingWizard(ctx context.Context, stdin io.Reader, stdout io.Writer,
 	_, _ = fmt.Fprint(stdout, ui.FormatSectionsWrapped("Honch setup status", report.Sections()))
 
 	if needsRepoUpdate(report.Repos) {
-		ok, err := prompts.confirm("Clone missing Honch repos now? [y/N] ")
+		ok, err := prompts.Confirm("Clone missing Honch repos now?")
 		if err != nil {
 			return err
 		}
@@ -108,7 +107,7 @@ func runOnboardingWizard(ctx context.Context, stdin io.Reader, stdout io.Writer,
 				return err
 			}
 		} else {
-			ok, err := prompts.confirm("Update sibling repo paths now? [y/N] ")
+			ok, err := prompts.Confirm("Update sibling repo paths now?")
 			if err != nil {
 				return err
 			}
@@ -121,7 +120,7 @@ func runOnboardingWizard(ctx context.Context, stdin io.Reader, stdout io.Writer,
 		report = buildSandboxDoctorReport(root, cfg)
 	}
 
-	ok, err := prompts.confirm("Run the recommended sandbox setup now? [y/N] ")
+	ok, err := prompts.Confirm("Run the recommended sandbox setup now?")
 	if err != nil {
 		return err
 	}
@@ -131,7 +130,7 @@ func runOnboardingWizard(ctx context.Context, stdin io.Reader, stdout io.Writer,
 		}
 	}
 
-	ok, err = prompts.confirm(fmt.Sprintf("Install honch to %s now? [y/N] ", target))
+	ok, err = prompts.Confirm(fmt.Sprintf("Install honch to %s now?", target))
 	if err != nil {
 		return err
 	}
@@ -152,63 +151,6 @@ func runOnboardingWizard(ctx context.Context, stdin io.Reader, stdout io.Writer,
 		},
 	}}))
 	return nil
-}
-
-type onboardingPrompts struct {
-	in     io.Reader
-	out    io.Writer
-	reader *bufio.Reader
-}
-
-func newOnboardingPrompts(in io.Reader, out io.Writer) *onboardingPrompts {
-	return &onboardingPrompts{
-		in:     in,
-		out:    out,
-		reader: bufio.NewReader(in),
-	}
-}
-
-func (p *onboardingPrompts) confirm(prompt string) (bool, error) {
-	return p.confirmDefault(prompt, false)
-}
-
-func (p *onboardingPrompts) confirmDefault(prompt string, defaultValue bool) (bool, error) {
-	_, _ = fmt.Fprint(p.out, prompt)
-	answer, err := p.readLine()
-	if err != nil {
-		return false, err
-	}
-	answer = strings.ToLower(strings.TrimSpace(answer))
-	if answer == "" {
-		return defaultValue, nil
-	}
-	return answer == "y" || answer == "yes", nil
-}
-
-func (p *onboardingPrompts) text(prompt string, defaultValue string) (string, error) {
-	if defaultValue != "" {
-		prompt = fmt.Sprintf("%s [%s] ", prompt, defaultValue)
-	} else {
-		prompt = prompt + " "
-	}
-	_, _ = fmt.Fprint(p.out, prompt)
-	answer, err := p.readLine()
-	if err != nil {
-		return "", err
-	}
-	answer = strings.TrimSpace(answer)
-	if answer == "" {
-		return defaultValue, nil
-	}
-	return answer, nil
-}
-
-func (p *onboardingPrompts) readLine() (string, error) {
-	answer, err := p.reader.ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", err
-	}
-	return answer, nil
 }
 
 func onboardingRepoRows(root string, cfg config.Config) []ui.Row {
@@ -261,12 +203,12 @@ type siblingRepoSource struct {
 	Path string
 }
 
-func cloneMissingSiblingRepos(ctx context.Context, prompts *onboardingPrompts, stdout io.Writer, stderr io.Writer, root string, cfg *config.Config) error {
+func cloneMissingSiblingRepos(ctx context.Context, prompts *ui.PromptSession, stdout io.Writer, stderr io.Writer, root string, cfg *config.Config) error {
 	missing := missingSiblingRepoSources(root, *cfg)
 	if len(missing) == 0 {
 		return nil
 	}
-	parent, err := prompts.text("Clone destination parent", filepath.Dir(root))
+	parent, err := prompts.Text("Clone destination parent", filepath.Dir(root))
 	if err != nil {
 		return err
 	}
@@ -346,7 +288,7 @@ func saveRepoPath(root string, cfg config.Config, key string, value string) erro
 	return setConfigValue(root, cfg, field, value)
 }
 
-func promptAndSaveRepoPaths(prompts *onboardingPrompts, root string, cfg *config.Config) error {
+func promptAndSaveRepoPaths(prompts *ui.PromptSession, root string, cfg *config.Config) error {
 	if _, err := ensureConfigFile(root, *cfg); err != nil {
 		return err
 	}
@@ -359,7 +301,7 @@ func promptAndSaveRepoPaths(prompts *onboardingPrompts, root string, cfg *config
 		if current == "" {
 			current = fmt.Sprint(field.Read(config.Config{}))
 		}
-		value, err := prompts.text("Set "+field.Name+" repo path", current)
+		value, err := prompts.Text("Set "+field.Name+" repo path", current)
 		if err != nil {
 			return err
 		}
