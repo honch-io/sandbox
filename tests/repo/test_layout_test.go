@@ -46,6 +46,35 @@ func TestTestsDirectoryDoesNotMirrorInternalPackages(t *testing.T) {
 	}
 }
 
+func TestRepositoryDoesNotShipStaleStaticSite(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, "site")); err == nil {
+		t.Fatal("site/ should not be present in the sandbox repository")
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+}
+
+func TestCLIEntrypointLivesUnderCmdHonch(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, "main.go")); err == nil {
+		t.Fatal("root main.go should not be present; use cmd/honch as the canonical CLI entrypoint")
+	} else if !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "cmd", "honch", "main.go")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSandboxHarnessesReferenceCanonicalSDKLayout(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
