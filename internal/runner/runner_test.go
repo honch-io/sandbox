@@ -123,6 +123,72 @@ func TestEspIDFRunnerBuildUsesIDFPyWithStateBuildDirAndSandboxDefines(t *testing
 	}
 }
 
+func TestEspIDFBuildArgsIncludeHardwareWiFiSettings(t *testing.T) {
+	buildDir := filepath.Join("state", "build", "esp-idf")
+	args := espIDFBuildArgs(buildDir, EspIDFSettings{
+		Endpoint:     "http://192.168.1.10:18080",
+		Token:        "honch_e2e_test_key",
+		WiFiSSID:     "test-network",
+		WiFiPassword: "test-password",
+		UseWiFi:      true,
+	})
+	joined := strings.Join(args, " ")
+	for _, want := range []string{
+		"-D HONCH_SANDBOX_HOST=http://192.168.1.10:18080",
+		"-D HONCH_SANDBOX_WIFI_SSID=test-network",
+		"-D HONCH_SANDBOX_WIFI_PASSWORD=test-password",
+		"-D HONCH_SANDBOX_USE_WIFI=ON",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("build args missing %q:\n%s", want, joined)
+		}
+	}
+}
+
+func TestEspIDFRunnerRunHardwareUsesIDFPyFlashMonitor(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake idf.py script is POSIX-only")
+	}
+	repoRoot := t.TempDir()
+	projectDir := filepath.Join(repoRoot, "harnesses", "esp-idf")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(repoRoot, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(repoRoot, "idf.log")
+	idfPy := filepath.Join(binDir, "idf.py")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$PWD|$*\" >> " + logPath + "\nexit 0\n"
+	if err := os.WriteFile(idfPy, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	r := EspIDFRunner{RepoRoot: repoRoot, StateDir: filepath.Join(repoRoot, ".honch-sandbox")}
+	build := EspIDFBuild{
+		ProjectDir: projectDir,
+		BuildDir:   filepath.Join(repoRoot, ".honch-sandbox", "build", "esp-idf"),
+	}
+	if err := r.RunHardware(context.Background(), build, HardwareRunSettings{
+		Port:       "/dev/cu.usbserial-test",
+		EraseFlash: true,
+	}, io.Discard, io.Discard); err != nil {
+		t.Fatalf("RunHardware returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := string(data)
+	want := "-B " + build.BuildDir + " -p /dev/cu.usbserial-test erase-flash flash monitor"
+	if !strings.Contains(log, want) {
+		t.Fatalf("idf.py log missing %q:\n%s", want, log)
+	}
+}
+
 func TestCCoreRunnerBuildUsesConfiguredHarnessDir(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake cmake script is POSIX-only")

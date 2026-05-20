@@ -9,7 +9,7 @@ command names throughout the CLI.
 | Name | Kind | Harness | Emulator |
 | --- | --- | --- | --- |
 | `c-core` | `posix` | `harnesses/c-core` | none |
-| `esp-idf` | `qemu-esp32` | `harnesses/esp-idf` | Espressif QEMU |
+| `esp-idf` | `qemu-esp32` | `harnesses/esp-idf` | Espressif QEMU or real ESP32 over serial |
 
 ## Registry Contract
 
@@ -66,6 +66,7 @@ only become visible when there is a real E2E verification route behind it.
 
 - Harnesses must stay in this repo under `harnesses/`, not customer SDK package paths.
 - `c-core` is the fast POSIX smoke-test adapter.
-- `esp-idf` runs as firmware under QEMU.
+- `esp-idf` runs as firmware under QEMU by default. Pass `--device <serial-port>`
+  to flash and monitor a real ESP32 using Wi-Fi.
 - Keep future adapters behind the same `sandbox run <adapter>` contract and
   document their emulator assumptions before exposing commands.

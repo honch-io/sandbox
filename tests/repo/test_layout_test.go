@@ -45,3 +45,70 @@ func TestTestsDirectoryDoesNotMirrorInternalPackages(t *testing.T) {
 		t.Fatalf("tests/internal must not mirror production sources: %s", strings.Join(mirrored, ", "))
 	}
 }
+
+func TestSandboxHarnessesReferenceCanonicalSDKLayout(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	checks := []struct {
+		path   string
+		want   string
+		legacy []string
+	}{
+		{
+			path: "harnesses/c-core/CMakeLists.txt",
+			want: "../../../SDK/ports/posix",
+			legacy: []string{
+				"../../../SDK/c-core",
+				"honch_c_core",
+			},
+		},
+		{
+			path: "harnesses/esp-idf/CMakeLists.txt",
+			want: "../../../SDK/ports/esp-idf/honch",
+			legacy: []string{
+				"../../../SDK/esp-idf/honch",
+			},
+		},
+	}
+
+	for _, check := range checks {
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(check.path)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(data)
+		if !strings.Contains(text, check.want) {
+			t.Fatalf("%s does not reference canonical SDK path %q", check.path, check.want)
+		}
+		for _, legacy := range check.legacy {
+			if strings.Contains(text, legacy) {
+				t.Fatalf("%s still references legacy SDK path/target %q", check.path, legacy)
+			}
+		}
+	}
+}
+
+func TestESPIDFHarnessEmitsBootSmokeEvent(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, "harnesses", "esp-idf", "main", "app_main.c"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !strings.Contains(text, `sandbox_app_track("sdk.esp32.boot"`) {
+		t.Fatalf("esp-idf harness should emit a boot smoke event for hardware validation")
+	}
+	if !strings.Contains(text, "sandbox_app_flush()") {
+		t.Fatalf("esp-idf harness should flush the boot smoke event for hardware validation")
+	}
+	if !strings.Contains(text, "esp_sntp_init()") {
+		t.Fatalf("esp-idf hardware harness should sync time before emitting smoke events")
+	}
+}

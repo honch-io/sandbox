@@ -35,7 +35,7 @@ func newProxyServeCommand(deps Dependencies) *cobra.Command {
 				handler.ServeHTTP(w, r)
 			})
 			server := &http.Server{
-				Addr:              fmt.Sprintf("127.0.0.1:%d", cfg.Ports.Proxy),
+				Addr:              fmt.Sprintf("%s:%d", cfg.Sandbox.ProxyBind, cfg.Ports.Proxy),
 				Handler:           wrapped,
 				ReadHeaderTimeout: 5 * time.Second,
 			}

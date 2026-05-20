@@ -91,6 +91,7 @@ plan to run the ESP-IDF adapter.
 | Stop the sandbox stack or runner | `./honch sandbox stop` |
 | Run the C/POSIX harness | `./honch sandbox run c-core --detach` |
 | Run the ESP-IDF harness | `./honch sandbox run esp-idf --detach` |
+| Run ESP-IDF on real hardware | `./honch sandbox run esp-idf --device /dev/cu.usbserial-0001 --erase-flash` |
 | Drive the harness | `battery`, `network`, `track`, `flush`, `reset` |
 | Inspect events | `./honch sandbox events list` or `./honch sandbox events tail` |
 | Inspect logs | `./honch sandbox logs device`, `./honch sandbox logs proxy` |
@@ -133,6 +134,20 @@ Defaults live in `config/default.yaml`:
 Override those values from the sandbox repo root with `.honch-sandbox.yaml` when
 your local checkout is different.
 
+Real ESP-IDF hardware runs need the sandbox proxy to listen on an address the
+device can reach. Set `sandbox.proxy_bind` to `0.0.0.0`, restart the stack, and
+pass Wi-Fi credentials with flags or environment variables:
+
+```sh
+./honch sandbox config set sandbox.proxy_bind 0.0.0.0
+./honch sandbox stop
+./honch sandbox start
+
+HONCH_SANDBOX_WIFI_SSID="your-ssid" \
+HONCH_SANDBOX_WIFI_PASSWORD="your-password" \
+  ./honch sandbox run esp-idf --device /dev/cu.usbserial-0001 --erase-flash
+```
+
 Use `./honch sandbox flags` to inspect command-specific flags without opening
 each subcommand help screen.
 Use `./honch sandbox config list` to inspect the resolved values, `set` to
@@ -170,7 +185,7 @@ Harnesses are developer-only and live under `harnesses/`.
 
 The current adapters are:
 
-- `c-core`: native POSIX C harness
+- `c-core`: native POSIX C harness linked against the canonical SDK POSIX port
 - `esp-idf`: ESP32 firmware harness running in Espressif QEMU
 
 Each harness is split into customer-like app code and sandbox plumbing. Edit the
@@ -215,8 +230,8 @@ $EDITOR harnesses/esp-idf/main/app.c
 
 Use this path when changing the ESP-IDF SDK or shared embedded behavior. It
 builds the firmware from `harnesses/esp-idf`, links the local
-`esp-idf/honch` component, boots it in QEMU, and drives the firmware over UART
-with the same JSON control commands.
+`SDK/ports/esp-idf/honch` component, boots it in QEMU, and drives the firmware
+over UART with the same JSON control commands.
 
 If you pass `--idf-path`, Honch stores the resolved checkout path in
 `sandbox.idf_path` so later `qemu doctor` and `run esp-idf` commands use the
@@ -242,6 +257,12 @@ go build -o honch ./cmd/honch
 ```
 
 The firmware starts with `-nic user,model=open_eth`.
+
+For real hardware, use `--device <serial-port>`. The hardware path builds the
+same firmware harness, switches it from QEMU Ethernet to Wi-Fi, flashes the
+device, then opens the ESP-IDF monitor. The device endpoint is auto-derived from
+the first LAN IPv4 address and the sandbox proxy port. Override it with
+`--device-endpoint http://<host-ip>:<proxy-port>` if needed.
 
 ## Troubleshooting
 
