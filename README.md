@@ -18,7 +18,7 @@ SDK harness -> local proxy -> capture -> worker -> ClickHouse
 The easiest install path is the release installer:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/honch-io/sandbox/main/scripts/install.sh | sh
+curl -fsSL https://honch.dev | sh
 ```
 
 The installer detects your OS and CPU, downloads the latest
@@ -30,7 +30,7 @@ Use `--no-install` if you want to try the CLI from a temporary download without
 copying it into your PATH:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/honch-io/sandbox/main/scripts/install.sh | sh -s -- --no-install
+curl -fsSL https://honch.dev | sh -s -- --no-install
 ```
 
 Use `--sandbox-dir <dir>` if you want the sandbox checkout somewhere else.
