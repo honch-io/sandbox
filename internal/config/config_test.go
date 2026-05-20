@@ -75,6 +75,21 @@ sandbox:
 	}
 }
 
+func TestLoadReadsProxyBindAddress(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".honch-sandbox.yaml"), []byte("sandbox:\n  proxy_bind: 0.0.0.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.Sandbox.ProxyBind != "0.0.0.0" {
+		t.Fatalf("ProxyBind = %q", cfg.Sandbox.ProxyBind)
+	}
+}
+
 func TestLoadRejectsInvalidOverride(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, ".honch-sandbox.yaml"), []byte("ports:\n  proxy: nope\n"), 0o600); err != nil {

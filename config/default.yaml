@@ -17,6 +17,7 @@ sandbox:
   token: honch_e2e_test_key
   clickhouse_database: platform
   endpoint_url: http://127.0.0.1:8001
+  proxy_bind: 127.0.0.1
   state_dir: .honch-sandbox
 stack:
   images:

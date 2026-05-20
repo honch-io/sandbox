@@ -72,6 +72,7 @@ var configSections = []configSection{
 			{Key: "sandbox.clickhouse_database", Name: "clickhouse_database", TypeLabel: "string", Kind: configFieldString, Path: []string{"sandbox", "clickhouse_database"}, Read: func(cfg config.Config) any { return cfg.Sandbox.ClickHouseDatabase }},
 			{Key: "sandbox.state_dir", Name: "state_dir", TypeLabel: "path", Kind: configFieldString, Path: []string{"sandbox", "state_dir"}, Read: func(cfg config.Config) any { return cfg.Sandbox.StateDir }},
 			{Key: "sandbox.endpoint_url", Name: "endpoint_url", TypeLabel: "url", Kind: configFieldString, Path: []string{"sandbox", "endpoint_url"}, Read: func(cfg config.Config) any { return cfg.Sandbox.EndpointURL }},
+			{Key: "sandbox.proxy_bind", Name: "proxy_bind", TypeLabel: "host", Kind: configFieldString, Path: []string{"sandbox", "proxy_bind"}, Read: func(cfg config.Config) any { return cfg.Sandbox.ProxyBind }},
 			{Key: "sandbox.idf_path", Name: "idf_path", TypeLabel: "path", Kind: configFieldString, Path: []string{"sandbox", "idf_path"}, Read: func(cfg config.Config) any { return cfg.Sandbox.IDFPath }},
 		},
 	},
@@ -288,6 +289,7 @@ func starterConfigContent(cfg config.Config) string {
 		ProjectID          string `yaml:"project_id"`
 		Token              string `yaml:"token"`
 		ClickHouseDatabase string `yaml:"clickhouse_database"`
+		ProxyBind          string `yaml:"proxy_bind"`
 		StateDir           string `yaml:"state_dir"`
 	}
 	content, err := yaml.Marshal(struct {
@@ -317,6 +319,7 @@ func starterConfigContent(cfg config.Config) string {
 			ProjectID:          cfg.Sandbox.ProjectID,
 			Token:              cfg.Sandbox.Token,
 			ClickHouseDatabase: cfg.Sandbox.ClickHouseDatabase,
+			ProxyBind:          cfg.Sandbox.ProxyBind,
 			StateDir:           cfg.Sandbox.StateDir,
 		},
 	})

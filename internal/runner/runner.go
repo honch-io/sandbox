@@ -54,13 +54,21 @@ func (r CCoreRunner) Run(ctx context.Context, binary string, detach bool, env ma
 }
 
 type EspIDFSettings struct {
-	Endpoint string
-	Token    string
+	Endpoint     string
+	Token        string
+	WiFiSSID     string
+	WiFiPassword string
+	UseWiFi      bool
 }
 
 type EspIDFBuild struct {
 	ProjectDir string
 	BuildDir   string
+}
+
+type HardwareRunSettings struct {
+	Port       string
+	EraseFlash bool
 }
 
 var dialQEMUSerialFn = dialQEMUSerial
@@ -110,6 +118,29 @@ func (r EspIDFRunner) Build(ctx context.Context, settings EspIDFSettings) (EspID
 
 func (r EspIDFRunner) Run(ctx context.Context, build EspIDFBuild, controlPath string, stdout io.Writer, stderr io.Writer) error {
 	return r.RunQEMU(ctx, build, controlPath, stdout, stderr)
+}
+
+func (r EspIDFRunner) RunHardware(ctx context.Context, build EspIDFBuild, settings HardwareRunSettings, stdout io.Writer, stderr io.Writer) error {
+	if settings.Port == "" {
+		return fmt.Errorf("serial port is required for ESP-IDF hardware runs")
+	}
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	args := []string{"-B", build.BuildDir, "-p", settings.Port}
+	if settings.EraseFlash {
+		args = append(args, "erase-flash")
+	}
+	args = append(args, "flash", "monitor")
+	cmd := r.idfCommand(ctx, args...)
+	cmd.Dir = build.ProjectDir
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
 }
 
 func (r EspIDFRunner) RunQEMU(ctx context.Context, build EspIDFBuild, controlPath string, stdout io.Writer, stderr io.Writer) error {
@@ -381,12 +412,20 @@ func shellQuote(value string) string {
 }
 
 func espIDFBuildArgs(buildDir string, settings EspIDFSettings) []string {
-	return []string{
+	args := []string{
 		"-B", buildDir,
 		"-D", "SDKCONFIG=" + filepath.Join(buildDir, "sdkconfig"),
 		"-D", "HONCH_SANDBOX_HOST=" + settings.Endpoint,
 		"-D", "HONCH_SANDBOX_API_KEY=" + settings.Token,
 	}
+	if settings.UseWiFi {
+		args = append(args,
+			"-D", "HONCH_SANDBOX_USE_WIFI=ON",
+			"-D", "HONCH_SANDBOX_WIFI_SSID="+settings.WiFiSSID,
+			"-D", "HONCH_SANDBOX_WIFI_PASSWORD="+settings.WiFiPassword,
+		)
+	}
+	return args
 }
 
 func Start(ctx context.Context, binary string, env map[string]string, stdin io.Reader, stdout io.Writer, stderr io.Writer) (*exec.Cmd, error) {
