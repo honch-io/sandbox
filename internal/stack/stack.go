@@ -47,7 +47,7 @@ func (s Service) Start(ctx context.Context, cfg config.Config) error {
 }
 
 func (s Service) Stop(ctx context.Context, cfg config.Config) error {
-	if err := s.stopBackgroundProcesses(cfg); err != nil {
+	if err := s.stopBackgroundProcesses(ctx, cfg); err != nil {
 		return err
 	}
 	return s.runCommands(ctx, cfg, cfg.Stack.StopCommands)

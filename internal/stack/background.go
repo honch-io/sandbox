@@ -14,6 +14,19 @@ import (
 	"honch.dev/honch/internal/config"
 )
 
+const (
+	backgroundStopGracePeriod     = 2 * time.Second
+	backgroundStopKillGracePeriod = 1 * time.Second
+	backgroundStopPollInterval    = 50 * time.Millisecond
+)
+
+type backgroundProcessTarget struct {
+	name string
+	path string
+	pid  int
+	port int
+}
+
 func (s Service) startBackground(ctx context.Context, dir string, cfg config.Config, command config.CommandConfig) error {
 	running, err := s.backgroundAlreadyRunning(ctx, cfg, command)
 	if err != nil {
@@ -193,7 +206,7 @@ func processCommandMatches(pid int, args []string) bool {
 	return strings.Contains(command, strings.Join(args, " "))
 }
 
-func (s Service) stopBackgroundProcesses(cfg config.Config) error {
+func (s Service) stopBackgroundProcesses(ctx context.Context, cfg config.Config) error {
 	pidDir := filepath.Join(s.Root, cfg.Sandbox.StateDir, "pids")
 	entries, err := os.ReadDir(pidDir)
 	if err != nil {
@@ -202,25 +215,110 @@ func (s Service) stopBackgroundProcesses(cfg config.Config) error {
 		}
 		return err
 	}
+	targets := []backgroundProcessTarget{}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".pid") {
 			continue
 		}
+		name := strings.TrimSuffix(entry.Name(), ".pid")
 		path := filepath.Join(pidDir, entry.Name())
 		data, readErr := os.ReadFile(path)
 		if readErr == nil {
 			var pid int
 			if _, scanErr := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &pid); scanErr == nil && pid > 0 {
-				if killErr := syscall.Kill(-pid, syscall.SIGINT); killErr != nil {
-					if process, findErr := os.FindProcess(pid); findErr == nil {
-						_ = process.Signal(os.Interrupt)
-					}
-				}
+				targets = append(targets, backgroundProcessTarget{
+					name: name,
+					path: path,
+					pid:  pid,
+					port: backgroundProcessPort(cfg, name),
+				})
 			}
 		}
-		if removeErr := os.Remove(path); removeErr != nil {
+		if readErr != nil {
+			if removeErr := os.Remove(path); removeErr != nil {
+				return removeErr
+			}
+		}
+	}
+	for _, target := range targets {
+		if err := stopBackgroundProcess(ctx, target); err != nil {
+			return err
+		}
+		if removeErr := os.Remove(target.path); removeErr != nil {
 			return removeErr
 		}
 	}
 	return nil
+}
+
+func backgroundProcessPort(cfg config.Config, name string) int {
+	switch name {
+	case "capture":
+		return cfg.Ports.Capture
+	case "worker":
+		return cfg.Ports.Worker
+	case "proxy":
+		return cfg.Ports.Proxy
+	default:
+		return 0
+	}
+}
+
+func stopBackgroundProcess(ctx context.Context, target backgroundProcessTarget) error {
+	if target.pid <= 0 {
+		return nil
+	}
+	_ = signalProcessGroup(target.pid, os.Interrupt)
+	if backgroundProcessStopped(ctx, target, backgroundStopGracePeriod) {
+		return nil
+	}
+	_ = signalProcessGroup(target.pid, syscall.SIGTERM)
+	if backgroundProcessStopped(ctx, target, backgroundStopKillGracePeriod) {
+		return nil
+	}
+	if err := signalProcessGroup(target.pid, syscall.SIGKILL); err != nil {
+		return err
+	}
+	if backgroundProcessStopped(ctx, target, backgroundStopKillGracePeriod) {
+		return nil
+	}
+	return fmt.Errorf("%s process %d did not stop", target.name, target.pid)
+}
+
+func signalProcessGroup(pid int, signal os.Signal) error {
+	if pid <= 0 {
+		return nil
+	}
+	sysSignal, ok := signal.(syscall.Signal)
+	if ok {
+		if err := syscall.Kill(-pid, sysSignal); err == nil {
+			return nil
+		}
+	}
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return process.Signal(signal)
+}
+
+func backgroundProcessStopped(ctx context.Context, target backgroundProcessTarget, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for {
+		open := target.port > 0 && portOpen(ctx, target.port, backgroundStopPollInterval)
+		if target.port > 0 && !open {
+			return true
+		}
+		if target.port <= 0 && !processAlive(target.pid) {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(backgroundStopPollInterval):
+		}
+	}
 }
