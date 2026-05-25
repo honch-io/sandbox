@@ -233,6 +233,31 @@ func TestClearForegroundRunnerStateReturnsSaveFailure(t *testing.T) {
 	}
 }
 
+func TestSaveRunnerSessionStateReturnsLoadFailureWithoutClobberingSession(t *testing.T) {
+	root := t.TempDir()
+	sessionPath := filepath.Join(root, "session.json")
+	manager := session.NewManager(sessionPath)
+	original := []byte("{not-json")
+	if err := os.MkdirAll(filepath.Dir(sessionPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sessionPath, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := saveRunnerSessionState(manager, session.RunnerState{Adapter: "c-core", PID: 123}, session.ProxyState{Mode: "online", Port: 18080})
+	if err == nil {
+		t.Fatal("saveRunnerSessionState ignored session load failure")
+	}
+	after, readErr := os.ReadFile(sessionPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(after) != string(original) {
+		t.Fatalf("saveRunnerSessionState clobbered corrupt session state: %q", after)
+	}
+}
+
 func failingSessionManager(t *testing.T) session.Manager {
 	t.Helper()
 	root := t.TempDir()
