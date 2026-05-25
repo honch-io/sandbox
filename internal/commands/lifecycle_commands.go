@@ -33,7 +33,10 @@ func newStartCommand(deps Dependencies) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			existingState, _ := manager.Load()
+			existingState, err := loadSessionForUpdate(manager)
+			if err != nil {
+				return err
+			}
 			if existingState.Stack.Running {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), ui.Success("sandbox is already running"))
 				return nil

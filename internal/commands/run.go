@@ -152,10 +152,7 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 	env := runnerEnv(cfg.Ports.Proxy, cfg.Sandbox.Token, controlPath)
 	if opts.Detach {
 		_, err := startRunnerSupervisor(root, cfg, adapterConfig.Name, binary, controlPath, env, func(proc *os.Process) error {
-			state, _ := manager.Load()
-			state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Pid, Detached: true, ControlPath: controlPath}
-			state.Proxy = runnerProxyState(cmd.Context(), cfg)
-			return manager.Save(state)
+			return saveRunnerSessionState(manager, session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Pid, Detached: true, ControlPath: controlPath}, runnerProxyState(cmd.Context(), cfg))
 		})
 		if err != nil {
 			return err
@@ -167,10 +164,7 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 		if err != nil {
 			return err
 		}
-		state, _ := manager.Load()
-		state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Process.Pid, Detached: false, ControlPath: controlPath}
-		state.Proxy = runnerProxyState(ctx, cfg)
-		if err := saveForegroundRunnerState(manager, state, proc); err != nil {
+		if err := saveForegroundRunnerSessionState(manager, session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Process.Pid, Detached: false, ControlPath: controlPath}, runnerProxyState(ctx, cfg), proc); err != nil {
 			return err
 		}
 		err = proc.Wait()
@@ -201,7 +195,7 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 		return err
 	}
 	if opts.DevicePort != "" {
-		return runEspIDFHardwareAdapter(cmd, root, cfg, r, adapterConfig, opts)
+		return runEspIDFHardwareAdapter(cmd, root, cfg, manager, r, adapterConfig, opts)
 	}
 	var build runner.EspIDFBuild
 	if err := ui.WithSpinnerDone(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), "building ESP-IDF firmware", "ESP-IDF firmware has been built", func(ctx context.Context) error {
@@ -216,10 +210,7 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 	}
 	if opts.Detach {
 		_, err := startRunnerSupervisor(root, cfg, adapterConfig.Name, build.BuildDir, controlPath, nil, func(proc *os.Process) error {
-			state, _ := manager.Load()
-			state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Pid, Detached: true, ControlPath: controlPath}
-			state.Proxy = runnerProxyState(cmd.Context(), cfg)
-			return manager.Save(state)
+			return saveRunnerSessionState(manager, session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Pid, Detached: true, ControlPath: controlPath}, runnerProxyState(cmd.Context(), cfg))
 		})
 		if err != nil {
 			return err
@@ -227,10 +218,7 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 		return nil
 	}
 	return runAttachedProcessViewer(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg, time.Now().UTC(), controlPath, "Honch sandbox run "+adapterConfig.Name, func(ctx context.Context, stdout io.Writer, stderr io.Writer) error {
-		state, _ := manager.Load()
-		state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: os.Getpid(), Detached: false, ControlPath: controlPath}
-		state.Proxy = runnerProxyState(ctx, cfg)
-		if err := manager.Save(state); err != nil {
+		if err := saveRunnerSessionState(manager, session.RunnerState{Adapter: adapterConfig.Name, PID: os.Getpid(), Detached: false, ControlPath: controlPath}, runnerProxyState(ctx, cfg)); err != nil {
 			return err
 		}
 		err := r.Run(ctx, build, controlPath, stdout, stderr)
@@ -241,7 +229,7 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 	})
 }
 
-func runEspIDFHardwareAdapter(cmd *cobra.Command, root string, cfg config.Config, r runner.EspIDFRunner, adapterConfig adapter.Config, opts runOptions) error {
+func runEspIDFHardwareAdapter(cmd *cobra.Command, root string, cfg config.Config, manager session.Manager, r runner.EspIDFRunner, adapterConfig adapter.Config, opts runOptions) error {
 	if opts.Detach {
 		return fmt.Errorf("ESP-IDF hardware runs must stay attached so the serial monitor can own the TTY")
 	}
@@ -277,11 +265,7 @@ func runEspIDFHardwareAdapter(cmd *cobra.Command, root string, cfg config.Config
 	}); err != nil {
 		return err
 	}
-	state, _ := session.NewManager(filepath.Join(root, cfg.Sandbox.StateDir, "session.json")).Load()
-	state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: os.Getpid(), Detached: false, ControlPath: ""}
-	state.Proxy = runnerProxyState(cmd.Context(), cfg)
-	manager := session.NewManager(filepath.Join(root, cfg.Sandbox.StateDir, "session.json"))
-	if err := manager.Save(state); err != nil {
+	if err := saveRunnerSessionState(manager, session.RunnerState{Adapter: adapterConfig.Name, PID: os.Getpid(), Detached: false, ControlPath: ""}, runnerProxyState(cmd.Context(), cfg)); err != nil {
 		return err
 	}
 	err = r.RunHardware(cmd.Context(), build, runner.HardwareRunSettings{
@@ -292,6 +276,41 @@ func runEspIDFHardwareAdapter(cmd *cobra.Command, root string, cfg config.Config
 		return errors.Join(err, clearErr)
 	}
 	return err
+}
+
+func saveRunnerSessionState(manager session.Manager, runnerState session.RunnerState, proxyState session.ProxyState) error {
+	state, err := loadSessionForUpdate(manager)
+	if err != nil {
+		return err
+	}
+	state.Runner = runnerState
+	state.Proxy = proxyState
+	return manager.Save(state)
+}
+
+func saveForegroundRunnerSessionState(manager session.Manager, runnerState session.RunnerState, proxyState session.ProxyState, cmd *exec.Cmd) error {
+	state, err := loadSessionForUpdate(manager)
+	if err != nil {
+		if cmd != nil && cmd.Process != nil {
+			_ = killProcess(cmd.Process.Pid)
+			_ = cmd.Wait()
+		}
+		return err
+	}
+	state.Runner = runnerState
+	state.Proxy = proxyState
+	return saveForegroundRunnerState(manager, state, cmd)
+}
+
+func loadSessionForUpdate(manager session.Manager) (session.State, error) {
+	state, err := manager.Load()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return session.State{}, nil
+		}
+		return session.State{}, err
+	}
+	return state, nil
 }
 
 func saveForegroundRunnerState(manager session.Manager, state session.State, cmd *exec.Cmd) error {
