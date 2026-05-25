@@ -100,8 +100,17 @@ func Load(root string) (Config, error) {
 	if cfg.Sandbox.StateDir == "" {
 		cfg.Sandbox.StateDir = filepath.Join(root, ".honch-sandbox")
 	}
+	cfg.Sandbox.ProxyBind = normalizedProxyBind(cfg.Sandbox.ProxyBind)
 	cfg.Sandbox.EndpointURL = resolvedEndpointURL(cfg, explicitEndpointURL)
 	return cfg, nil
+}
+
+func normalizedProxyBind(bind string) string {
+	bind = strings.TrimSpace(bind)
+	if bind == "" {
+		return "127.0.0.1"
+	}
+	return bind
 }
 
 func resolvedEndpointURL(cfg Config, explicitEndpointURL bool) string {
