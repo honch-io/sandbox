@@ -223,6 +223,56 @@ func TestStopRemovesMalformedBackgroundPidFiles(t *testing.T) {
 	}
 }
 
+func TestStopRunsStopCommandsWhenBackgroundShutdownFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process-group cleanup is POSIX-only")
+	}
+	root := t.TempDir()
+	repo := filepath.Join(root, "platform")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	cmd := exec.Command("sh", "-c", "sleep 30")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			_ = cmd.Wait()
+		}
+	})
+	pidDir := filepath.Join(root, ".state", "pids")
+	if err := os.MkdirAll(pidDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pidDir, "capture.pid"), []byte(strconv.Itoa(cmd.Process.Pid)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(root, "stop-ran")
+	cfg := config.Config{
+		Repos:   config.ReposConfig{Platform: "platform"},
+		Ports:   config.PortsConfig{Capture: listener.Addr().(*net.TCPAddr).Port},
+		Sandbox: config.SandboxConfig{StateDir: ".state"},
+		Stack: config.StackConfig{StopCommands: []config.CommandConfig{
+			{Repo: "platform", Args: []string{"sh", "-c", "touch " + marker}},
+		}},
+	}
+
+	if err := New(root).Stop(context.Background(), cfg); err == nil {
+		t.Fatal("Stop succeeded despite background shutdown failure")
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("stop command did not run after background shutdown failure: %v", err)
+	}
+}
+
 func TestStartSkipsMigrationsWhenMigrationDeclined(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "platform")
