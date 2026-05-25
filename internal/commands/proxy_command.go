@@ -2,11 +2,14 @@ package commands
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
+	"honch.dev/honch/internal/config"
 	"honch.dev/honch/internal/proxy"
 )
 
@@ -35,7 +38,7 @@ func newProxyServeCommand(deps Dependencies) *cobra.Command {
 				handler.ServeHTTP(w, r)
 			})
 			server := &http.Server{
-				Addr:              fmt.Sprintf("%s:%d", cfg.Sandbox.ProxyBind, cfg.Ports.Proxy),
+				Addr:              proxyServerAddr(cfg),
 				Handler:           wrapped,
 				ReadHeaderTimeout: 5 * time.Second,
 			}
@@ -43,4 +46,8 @@ func newProxyServeCommand(deps Dependencies) *cobra.Command {
 			return server.ListenAndServe()
 		},
 	}
+}
+
+func proxyServerAddr(cfg config.Config) string {
+	return net.JoinHostPort(cfg.Sandbox.ProxyBind, strconv.Itoa(cfg.Ports.Proxy))
 }
