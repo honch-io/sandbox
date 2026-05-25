@@ -34,7 +34,9 @@ func TestBackgroundPortServerHelper(t *testing.T) {
 	if err != nil {
 		os.Exit(2)
 	}
-	defer listener.Close()
+	defer func() {
+		_ = listener.Close()
+	}()
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -236,7 +238,9 @@ func TestStopRunsStopCommandsWhenBackgroundShutdownFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() {
+		_ = listener.Close()
+	}()
 	cmd := exec.Command("sh", "-c", "sleep 30")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
@@ -314,7 +318,9 @@ func TestStartRejectsUnownedServicePort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() {
+		_ = listener.Close()
+	}()
 	port := listener.Addr().(*net.TCPAddr).Port
 	cfg := config.Config{
 		Repos:   config.ReposConfig{Capture: "capture"},
@@ -349,7 +355,9 @@ func TestStartRejectsOccupiedServicePortWithStaleLivePID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() {
+		_ = listener.Close()
+	}()
 	port := listener.Addr().(*net.TCPAddr).Port
 	pidDir := filepath.Join(root, ".state", "pids")
 	if err := os.MkdirAll(pidDir, 0o755); err != nil {
@@ -446,7 +454,9 @@ func freeTCPPort(t *testing.T) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() {
+		_ = listener.Close()
+	}()
 	return listener.Addr().(*net.TCPAddr).Port
 }
 
@@ -480,7 +490,9 @@ func startDelayedTCPListener(t *testing.T, port int, delay time.Duration) func()
 			return
 		}
 		ready <- listener
-		defer listener.Close()
+		defer func() {
+			_ = listener.Close()
+		}()
 		for {
 			conn, err := listener.Accept()
 			if err != nil {
