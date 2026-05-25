@@ -223,21 +223,24 @@ func (s Service) stopBackgroundProcesses(ctx context.Context, cfg config.Config)
 		name := strings.TrimSuffix(entry.Name(), ".pid")
 		path := filepath.Join(pidDir, entry.Name())
 		data, readErr := os.ReadFile(path)
-		if readErr == nil {
-			var pid int
-			if _, scanErr := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &pid); scanErr == nil && pid > 0 {
-				targets = append(targets, backgroundProcessTarget{
-					name: name,
-					path: path,
-					pid:  pid,
-					port: backgroundProcessPort(cfg, name),
-				})
-			}
-		}
 		if readErr != nil {
 			if removeErr := os.Remove(path); removeErr != nil {
 				return removeErr
 			}
+			continue
+		}
+		var pid int
+		if _, scanErr := fmt.Sscanf(strings.TrimSpace(string(data)), "%d", &pid); scanErr == nil && pid > 0 {
+			targets = append(targets, backgroundProcessTarget{
+				name: name,
+				path: path,
+				pid:  pid,
+				port: backgroundProcessPort(cfg, name),
+			})
+			continue
+		}
+		if removeErr := os.Remove(path); removeErr != nil {
+			return removeErr
 		}
 	}
 	for _, target := range targets {

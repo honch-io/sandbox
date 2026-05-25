@@ -203,6 +203,26 @@ func TestStopRemovesBackgroundPidFiles(t *testing.T) {
 	}
 }
 
+func TestStopRemovesMalformedBackgroundPidFiles(t *testing.T) {
+	root := t.TempDir()
+	pidDir := filepath.Join(root, ".state", "pids")
+	pidPath := filepath.Join(pidDir, "capture.pid")
+	if err := os.MkdirAll(pidDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pidPath, []byte("not-a-pid"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{Sandbox: config.SandboxConfig{StateDir: ".state"}}
+
+	if err := New(root).Stop(context.Background(), cfg); err != nil {
+		t.Fatalf("Stop returned error: %v", err)
+	}
+	if _, err := os.Stat(pidPath); !os.IsNotExist(err) {
+		t.Fatalf("malformed pid file still exists or unexpected error: %v", err)
+	}
+}
+
 func TestStartSkipsMigrationsWhenMigrationDeclined(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "platform")
