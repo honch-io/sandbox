@@ -138,6 +138,9 @@ Real ESP-IDF hardware runs need the sandbox proxy to listen on an address the
 device can reach. Set `sandbox.proxy_bind` to `0.0.0.0`, restart the stack, and
 pass Wi-Fi credentials with flags or environment variables:
 
+Warning: `0.0.0.0` exposes the sandbox proxy to other devices on your LAN. Use
+it only while running real hardware, then switch back to loopback.
+
 ```sh
 ./honch sandbox config set sandbox.proxy_bind 0.0.0.0
 ./honch sandbox stop
@@ -146,6 +149,10 @@ pass Wi-Fi credentials with flags or environment variables:
 HONCH_SANDBOX_WIFI_SSID="your-ssid" \
 HONCH_SANDBOX_WIFI_PASSWORD="your-password" \
   ./honch sandbox run esp-idf --device /dev/cu.usbserial-0001 --erase-flash
+
+./honch sandbox config set sandbox.proxy_bind 127.0.0.1
+./honch sandbox stop
+./honch sandbox start
 ```
 
 Use `./honch sandbox flags` to inspect command-specific flags without opening
