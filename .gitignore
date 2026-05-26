@@ -32,6 +32,3 @@ harnesses/esp-idf/build/
 *.log
 tmp/
 temp/
-
-# Local agent instructions
-AGENTS.md
