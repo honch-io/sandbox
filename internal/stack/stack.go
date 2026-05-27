@@ -2,6 +2,7 @@ package stack
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -47,10 +48,9 @@ func (s Service) Start(ctx context.Context, cfg config.Config) error {
 }
 
 func (s Service) Stop(ctx context.Context, cfg config.Config) error {
-	if err := s.stopBackgroundProcesses(cfg); err != nil {
-		return err
-	}
-	return s.runCommands(ctx, cfg, cfg.Stack.StopCommands)
+	backgroundErr := s.stopBackgroundProcesses(ctx, cfg)
+	stopErr := s.runCommands(ctx, cfg, cfg.Stack.StopCommands)
+	return errors.Join(backgroundErr, stopErr)
 }
 
 func (s Service) Update(ctx context.Context, cfg config.Config) error {

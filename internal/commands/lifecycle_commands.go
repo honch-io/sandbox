@@ -33,7 +33,10 @@ func newStartCommand(deps Dependencies) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			existingState, _ := manager.Load()
+			existingState, err := loadSessionForUpdate(manager)
+			if err != nil {
+				return err
+			}
 			if existingState.Stack.Running {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), ui.Success("sandbox is already running"))
 				return nil
@@ -305,7 +308,7 @@ func proxyHealthRow(ctx context.Context, cfg config.Config, state session.State,
 	if state.Proxy.PID > 0 {
 		return ui.Row{Key: "proxy health", Value: "down: sandbox proxy process not running"}
 	}
-	return ui.Row{Key: "proxy health", Value: "down: sandbox proxy is not tracked"}
+	return ui.Row{Key: "proxy health", Value: "up"}
 }
 
 func newUpdateCommand(deps Dependencies) *cobra.Command {

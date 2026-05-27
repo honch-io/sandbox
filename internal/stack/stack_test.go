@@ -6,7 +6,10 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -14,6 +17,34 @@ import (
 
 	"honch.dev/honch/internal/config"
 )
+
+func TestBackgroundPortServerHelper(t *testing.T) {
+	if os.Getenv("HONCH_STACK_PORT_HELPER") != "1" {
+		return
+	}
+	if len(os.Args) == 0 {
+		os.Exit(2)
+	}
+	port, err := strconv.Atoi(os.Args[len(os.Args)-1])
+	if err != nil {
+		os.Exit(2)
+	}
+	signal.Ignore(os.Interrupt)
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		os.Exit(2)
+	}
+	defer func() {
+		_ = listener.Close()
+	}()
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		_ = conn.Close()
+	}
+}
 
 func TestStartRunsBackgroundCommandsFromConfiguredSubdirectory(t *testing.T) {
 	root := t.TempDir()
@@ -174,6 +205,78 @@ func TestStopRemovesBackgroundPidFiles(t *testing.T) {
 	}
 }
 
+func TestStopRemovesMalformedBackgroundPidFiles(t *testing.T) {
+	root := t.TempDir()
+	pidDir := filepath.Join(root, ".state", "pids")
+	pidPath := filepath.Join(pidDir, "capture.pid")
+	if err := os.MkdirAll(pidDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pidPath, []byte("not-a-pid"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{Sandbox: config.SandboxConfig{StateDir: ".state"}}
+
+	if err := New(root).Stop(context.Background(), cfg); err != nil {
+		t.Fatalf("Stop returned error: %v", err)
+	}
+	if _, err := os.Stat(pidPath); !os.IsNotExist(err) {
+		t.Fatalf("malformed pid file still exists or unexpected error: %v", err)
+	}
+}
+
+func TestStopRunsStopCommandsWhenBackgroundShutdownFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process-group cleanup is POSIX-only")
+	}
+	root := t.TempDir()
+	repo := filepath.Join(root, "platform")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = listener.Close()
+	}()
+	cmd := exec.Command("sh", "-c", "sleep 30")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			_ = cmd.Wait()
+		}
+	})
+	pidDir := filepath.Join(root, ".state", "pids")
+	if err := os.MkdirAll(pidDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pidDir, "capture.pid"), []byte(strconv.Itoa(cmd.Process.Pid)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(root, "stop-ran")
+	cfg := config.Config{
+		Repos:   config.ReposConfig{Platform: "platform"},
+		Ports:   config.PortsConfig{Capture: listener.Addr().(*net.TCPAddr).Port},
+		Sandbox: config.SandboxConfig{StateDir: ".state"},
+		Stack: config.StackConfig{StopCommands: []config.CommandConfig{
+			{Repo: "platform", Args: []string{"sh", "-c", "touch " + marker}},
+		}},
+	}
+
+	if err := New(root).Stop(context.Background(), cfg); err == nil {
+		t.Fatal("Stop succeeded despite background shutdown failure")
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("stop command did not run after background shutdown failure: %v", err)
+	}
+}
+
 func TestStartSkipsMigrationsWhenMigrationDeclined(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "platform")
@@ -215,7 +318,9 @@ func TestStartRejectsUnownedServicePort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() {
+		_ = listener.Close()
+	}()
 	port := listener.Addr().(*net.TCPAddr).Port
 	cfg := config.Config{
 		Repos:   config.ReposConfig{Capture: "capture"},
@@ -250,7 +355,9 @@ func TestStartRejectsOccupiedServicePortWithStaleLivePID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() {
+		_ = listener.Close()
+	}()
 	port := listener.Addr().(*net.TCPAddr).Port
 	pidDir := filepath.Join(root, ".state", "pids")
 	if err := os.MkdirAll(pidDir, 0o755); err != nil {
@@ -282,6 +389,45 @@ func TestStartRejectsOccupiedServicePortWithStaleLivePID(t *testing.T) {
 	}
 }
 
+func TestStopReleasesTrackedBackgroundPorts(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("process-group cleanup is POSIX-only")
+	}
+	root := t.TempDir()
+	port := freeTCPPort(t)
+	cmd := exec.Command(os.Args[0], "-test.run=TestBackgroundPortServerHelper", "--", strconv.Itoa(port))
+	cmd.Env = append(os.Environ(), "HONCH_STACK_PORT_HELPER=1")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			_ = cmd.Wait()
+		}
+	})
+	waitUntilPortOpen(t, port)
+	pidDir := filepath.Join(root, ".state", "pids")
+	if err := os.MkdirAll(pidDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pidDir, "capture.pid"), []byte(strconv.Itoa(cmd.Process.Pid)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{
+		Ports:   config.PortsConfig{Capture: port},
+		Sandbox: config.SandboxConfig{StateDir: ".state"},
+	}
+
+	if err := New(root).Stop(context.Background(), cfg); err != nil {
+		t.Fatalf("Stop returned error: %v", err)
+	}
+	if portOpen(context.Background(), port, 50*time.Millisecond) {
+		t.Fatalf("Stop returned while capture port %d was still open", port)
+	}
+}
+
 func TestWaitForBackgroundPortsAppliesTimeoutPerService(t *testing.T) {
 	capturePort := freeTCPPort(t)
 	workerPort := freeTCPPort(t)
@@ -308,8 +454,22 @@ func freeTCPPort(t *testing.T) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() {
+		_ = listener.Close()
+	}()
 	return listener.Addr().(*net.TCPAddr).Port
+}
+
+func waitUntilPortOpen(t *testing.T, port int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if portOpen(context.Background(), port, 50*time.Millisecond) {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("port %d did not open", port)
 }
 
 func startDelayedTCPListener(t *testing.T, port int, delay time.Duration) func() {
@@ -330,7 +490,9 @@ func startDelayedTCPListener(t *testing.T, port int, delay time.Duration) func()
 			return
 		}
 		ready <- listener
-		defer listener.Close()
+		defer func() {
+			_ = listener.Close()
+		}()
 		for {
 			conn, err := listener.Accept()
 			if err != nil {

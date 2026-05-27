@@ -44,6 +44,7 @@ type SandboxConfig struct {
 	Token              string `mapstructure:"token"`
 	ClickHouseDatabase string `mapstructure:"clickhouse_database"`
 	EndpointURL        string `mapstructure:"endpoint_url"`
+	ProxyBind          string `mapstructure:"proxy_bind"`
 	StateDir           string `mapstructure:"state_dir"`
 	IDFPath            string `mapstructure:"idf_path"`
 }
@@ -99,8 +100,17 @@ func Load(root string) (Config, error) {
 	if cfg.Sandbox.StateDir == "" {
 		cfg.Sandbox.StateDir = filepath.Join(root, ".honch-sandbox")
 	}
+	cfg.Sandbox.ProxyBind = normalizedProxyBind(cfg.Sandbox.ProxyBind)
 	cfg.Sandbox.EndpointURL = resolvedEndpointURL(cfg, explicitEndpointURL)
 	return cfg, nil
+}
+
+func normalizedProxyBind(bind string) string {
+	bind = strings.TrimSpace(bind)
+	if bind == "" {
+		return "127.0.0.1"
+	}
+	return bind
 }
 
 func resolvedEndpointURL(cfg Config, explicitEndpointURL bool) string {
@@ -147,6 +157,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("sandbox.token", "honch_e2e_test_key")
 	v.SetDefault("sandbox.clickhouse_database", "platform")
 	v.SetDefault("sandbox.endpoint_url", "http://127.0.0.1:8001")
+	v.SetDefault("sandbox.proxy_bind", "127.0.0.1")
 	v.SetDefault("sandbox.state_dir", ".honch-sandbox")
 	v.SetDefault("stack.images", []string{
 		"postgres:16-alpine",

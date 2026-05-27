@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -20,7 +22,7 @@ import (
 )
 
 func newRunCommand(deps Dependencies) *cobra.Command {
-	var detach bool
+	var opts runOptions
 	cmd := &cobra.Command{
 		Use:   "run <adapter> [--detach]",
 		Short: "Build and run an SDK sandbox harness",
@@ -65,14 +67,28 @@ func newRunCommand(deps Dependencies) *cobra.Command {
 			if !ok {
 				return fmt.Errorf("unsupported adapter kind %q for %s", adapterConfig.Kind, adapterConfig.Name)
 			}
-			return runAdapter(cmd, root, cfg, manager, adapterConfig, detach)
+			return runAdapter(cmd, root, cfg, manager, adapterConfig, opts)
 		},
 	}
-	cmd.Flags().BoolVar(&detach, "detach", false, "run harness in the background")
+	cmd.Flags().BoolVar(&opts.Detach, "detach", false, "run harness in the background")
+	cmd.Flags().StringVar(&opts.DevicePort, "device", "", "serial port for a real ESP-IDF device")
+	cmd.Flags().StringVar(&opts.DeviceEndpoint, "device-endpoint", "", "sandbox proxy URL reachable from a real device")
+	cmd.Flags().StringVar(&opts.WiFiSSID, "wifi-ssid", "", "Wi-Fi SSID for ESP-IDF hardware runs")
+	cmd.Flags().StringVar(&opts.WiFiPassword, "wifi-password", "", "Wi-Fi password for ESP-IDF hardware runs")
+	cmd.Flags().BoolVar(&opts.EraseFlash, "erase-flash", false, "erase the ESP-IDF device before flashing")
 	return cmd
 }
 
-type adapterRunFunc func(*cobra.Command, string, config.Config, session.Manager, adapter.Config, bool) error
+type runOptions struct {
+	Detach         bool
+	DevicePort     string
+	DeviceEndpoint string
+	WiFiSSID       string
+	WiFiPassword   string
+	EraseFlash     bool
+}
+
+type adapterRunFunc func(*cobra.Command, string, config.Config, session.Manager, adapter.Config, runOptions) error
 
 func adapterRunnerForKind(kind string) (adapterRunFunc, bool) {
 	runners := map[string]adapterRunFunc{
@@ -119,7 +135,7 @@ func requireLiveSandbox(cmd *cobra.Command, cfg config.Config, manager session.M
 	return state, nil
 }
 
-func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager session.Manager, adapterConfig adapter.Config, detach bool) error {
+func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager session.Manager, adapterConfig adapter.Config, opts runOptions) error {
 	r := runner.CCoreRunner{RepoRoot: root, StateDir: filepath.Join(root, cfg.Sandbox.StateDir), HarnessDir: adapterConfig.Harness}
 	controlPath, err := ensureControlFIFO(root, cfg, adapterConfig.Name)
 	if err != nil {
@@ -134,12 +150,9 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 		return err
 	}
 	env := runnerEnv(cfg.Ports.Proxy, cfg.Sandbox.Token, controlPath)
-	if detach {
+	if opts.Detach {
 		_, err := startRunnerSupervisor(root, cfg, adapterConfig.Name, binary, controlPath, env, func(proc *os.Process) error {
-			state, _ := manager.Load()
-			state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Pid, Detached: true, ControlPath: controlPath}
-			state.Proxy = runnerProxyState(cmd.Context(), cfg)
-			return manager.Save(state)
+			return saveRunnerSessionState(manager, session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Pid, Detached: true, ControlPath: controlPath}, runnerProxyState(cmd.Context(), cfg))
 		})
 		if err != nil {
 			return err
@@ -151,10 +164,7 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 		if err != nil {
 			return err
 		}
-		state, _ := manager.Load()
-		state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Process.Pid, Detached: false, ControlPath: controlPath}
-		state.Proxy = runnerProxyState(ctx, cfg)
-		if err := saveForegroundRunnerState(manager, state, proc); err != nil {
+		if err := saveForegroundRunnerSessionState(manager, session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Process.Pid, Detached: false, ControlPath: controlPath}, runnerProxyState(ctx, cfg), proc); err != nil {
 			return err
 		}
 		err = proc.Wait()
@@ -165,7 +175,7 @@ func runCCoreAdapter(cmd *cobra.Command, root string, cfg config.Config, manager
 	})
 }
 
-func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manager session.Manager, adapterConfig adapter.Config, detach bool) error {
+func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manager session.Manager, adapterConfig adapter.Config, opts runOptions) error {
 	idfPath, _ := resolveIDFPath(root, cfg)
 	if status := qemuToolStatus(root, cfg); !status.Ready() {
 		return qemuNotReadyError()
@@ -184,6 +194,9 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 	if err != nil {
 		return err
 	}
+	if opts.DevicePort != "" {
+		return runEspIDFHardwareAdapter(cmd, root, cfg, manager, r, adapterConfig, opts)
+	}
 	var build runner.EspIDFBuild
 	if err := ui.WithSpinnerDone(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), "building ESP-IDF firmware", "ESP-IDF firmware has been built", func(ctx context.Context) error {
 		var buildErr error
@@ -195,12 +208,9 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 	}); err != nil {
 		return err
 	}
-	if detach {
+	if opts.Detach {
 		_, err := startRunnerSupervisor(root, cfg, adapterConfig.Name, build.BuildDir, controlPath, nil, func(proc *os.Process) error {
-			state, _ := manager.Load()
-			state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Pid, Detached: true, ControlPath: controlPath}
-			state.Proxy = runnerProxyState(cmd.Context(), cfg)
-			return manager.Save(state)
+			return saveRunnerSessionState(manager, session.RunnerState{Adapter: adapterConfig.Name, PID: proc.Pid, Detached: true, ControlPath: controlPath}, runnerProxyState(cmd.Context(), cfg))
 		})
 		if err != nil {
 			return err
@@ -208,10 +218,7 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 		return nil
 	}
 	return runAttachedProcessViewer(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg, time.Now().UTC(), controlPath, "Honch sandbox run "+adapterConfig.Name, func(ctx context.Context, stdout io.Writer, stderr io.Writer) error {
-		state, _ := manager.Load()
-		state.Runner = session.RunnerState{Adapter: adapterConfig.Name, PID: os.Getpid(), Detached: false, ControlPath: controlPath}
-		state.Proxy = runnerProxyState(ctx, cfg)
-		if err := manager.Save(state); err != nil {
+		if err := saveRunnerSessionState(manager, session.RunnerState{Adapter: adapterConfig.Name, PID: os.Getpid(), Detached: false, ControlPath: controlPath}, runnerProxyState(ctx, cfg)); err != nil {
 			return err
 		}
 		err := r.Run(ctx, build, controlPath, stdout, stderr)
@@ -220,6 +227,90 @@ func runEspIDFAdapter(cmd *cobra.Command, root string, cfg config.Config, manage
 		}
 		return err
 	})
+}
+
+func runEspIDFHardwareAdapter(cmd *cobra.Command, root string, cfg config.Config, manager session.Manager, r runner.EspIDFRunner, adapterConfig adapter.Config, opts runOptions) error {
+	if opts.Detach {
+		return fmt.Errorf("ESP-IDF hardware runs must stay attached so the serial monitor can own the TTY")
+	}
+	if cfg.Sandbox.ProxyBind == "127.0.0.1" || cfg.Sandbox.ProxyBind == "localhost" {
+		return errors.New(ui.FormatError("sandbox proxy is bound to localhost", []ui.Row{
+			{Key: "required", Value: "set sandbox.proxy_bind to 0.0.0.0 and restart the stack"},
+			{Key: "command", Value: "honch sandbox config set sandbox.proxy_bind 0.0.0.0"},
+		}))
+	}
+	wifiSSID := valueOr(opts.WiFiSSID, os.Getenv("HONCH_SANDBOX_WIFI_SSID"))
+	wifiPassword := valueOr(opts.WiFiPassword, os.Getenv("HONCH_SANDBOX_WIFI_PASSWORD"))
+	if wifiSSID == "" || wifiPassword == "" {
+		return errors.New(ui.FormatError("Wi-Fi credentials are required for ESP-IDF hardware runs", []ui.Row{
+			{Key: "flags", Value: "--wifi-ssid and --wifi-password"},
+			{Key: "env", Value: "HONCH_SANDBOX_WIFI_SSID and HONCH_SANDBOX_WIFI_PASSWORD"},
+		}))
+	}
+	endpoint, err := espIDFHardwareEndpoint(cfg, opts.DeviceEndpoint)
+	if err != nil {
+		return err
+	}
+	var build runner.EspIDFBuild
+	if err := ui.WithSpinnerDone(cmd.Context(), cmd.InOrStdin(), cmd.ErrOrStderr(), "building ESP-IDF firmware for hardware", "ESP-IDF hardware firmware has been built", func(ctx context.Context) error {
+		var buildErr error
+		build, buildErr = r.Build(ctx, runner.EspIDFSettings{
+			Endpoint:     endpoint,
+			Token:        cfg.Sandbox.Token,
+			WiFiSSID:     wifiSSID,
+			WiFiPassword: wifiPassword,
+			UseWiFi:      true,
+		})
+		return buildErr
+	}); err != nil {
+		return err
+	}
+	if err := saveRunnerSessionState(manager, session.RunnerState{Adapter: adapterConfig.Name, PID: os.Getpid(), Detached: false, ControlPath: ""}, runnerProxyState(cmd.Context(), cfg)); err != nil {
+		return err
+	}
+	err = r.RunHardware(cmd.Context(), build, runner.HardwareRunSettings{
+		Port:       opts.DevicePort,
+		EraseFlash: opts.EraseFlash,
+	}, cmd.OutOrStdout(), cmd.ErrOrStderr())
+	if clearErr := clearForegroundRunnerState(manager); clearErr != nil {
+		return errors.Join(err, clearErr)
+	}
+	return err
+}
+
+func saveRunnerSessionState(manager session.Manager, runnerState session.RunnerState, proxyState session.ProxyState) error {
+	state, err := loadSessionForUpdate(manager)
+	if err != nil {
+		return err
+	}
+	state.Runner = runnerState
+	state.Proxy = proxyState
+	return manager.Save(state)
+}
+
+func saveForegroundRunnerSessionState(manager session.Manager, runnerState session.RunnerState, proxyState session.ProxyState, cmd *exec.Cmd) error {
+	state, err := loadSessionForUpdate(manager)
+	if err != nil {
+		if cmd != nil && cmd.Process != nil {
+			_ = killProcess(cmd.Process.Pid)
+			_ = cmd.Wait()
+		}
+		return err
+	}
+	state.Runner = runnerState
+	state.Proxy = proxyState
+	return saveForegroundRunnerState(manager, state, cmd)
+}
+
+func loadSessionForUpdate(manager session.Manager) (session.State, error) {
+	state, err := manager.Load()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return session.State{}, nil
+		}
+		return session.State{}, err
+	}
+	return state, nil
 }
 
 func saveForegroundRunnerState(manager session.Manager, state session.State, cmd *exec.Cmd) error {
@@ -247,6 +338,51 @@ func clearForegroundRunnerState(manager session.Manager) error {
 
 func espIDFEndpoint(cfg config.Config) string {
 	return fmt.Sprintf("http://10.0.2.2:%d", cfg.Ports.Proxy)
+}
+
+func espIDFHardwareEndpoint(cfg config.Config, override string) (string, error) {
+	if strings.TrimSpace(override) != "" {
+		return strings.TrimRight(strings.TrimSpace(override), "/"), nil
+	}
+	ip, err := firstLANIPv4()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("http://%s:%d", ip, cfg.Ports.Proxy), nil
+}
+
+func firstLANIPv4() (string, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return "", err
+	}
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			var ip net.IP
+			switch value := addr.(type) {
+			case *net.IPNet:
+				ip = value.IP
+			case *net.IPAddr:
+				ip = value.IP
+			}
+			if ip == nil {
+				continue
+			}
+			ip = ip.To4()
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			return ip.String(), nil
+		}
+	}
+	return "", fmt.Errorf("could not find a LAN IPv4 address; pass --device-endpoint")
 }
 
 func runnerProxyState(ctx context.Context, cfg config.Config) session.ProxyState {
