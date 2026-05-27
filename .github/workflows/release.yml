@@ -31,28 +31,18 @@ jobs:
       - name: Build
         run: go build ./...
 
-  build:
-    name: Build release binary
+  release:
+    name: Publish release
     needs: verify
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: darwin
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
-    env:
-      CGO_ENABLED: 0
+    permissions:
+      contents: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -60,45 +50,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Build release binary
-        run: |
-          mkdir -p dist
-          GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
-            go build -trimpath -ldflags="-s -w" \
-            -o dist/honch-${{ matrix.goos }}-${{ matrix.goarch }} ./cmd/honch
-
-      - name: Upload release binary
-        uses: actions/upload-artifact@v4
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
         with:
-          name: honch-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/honch-${{ matrix.goos }}-${{ matrix.goarch }}
-          if-no-files-found: error
-
-  publish:
-    name: Publish GitHub Release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download release binaries
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          pattern: honch-*
-          merge-multiple: true
-
-      - name: Create checksums
-        run: |
-          cd dist
-          sha256sum honch-* > SHA256SUMS
-
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          files: |
-            dist/honch-*
-            dist/SHA256SUMS
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
