@@ -28,7 +28,7 @@ archives:
     name_template: "{{ .Binary }}-{{ .Os }}-{{ .Arch }}"
 
 checksum:
-  name_template: SHA256SUMS
+  disable: true
 
 changelog:
   sort: asc
