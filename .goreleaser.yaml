@@ -30,6 +30,10 @@ archives:
 checksum:
   disable: true
 
+release:
+  mode: keep-existing
+  replace_existing_artifacts: true
+
 changelog:
   sort: asc
   abbrev: -1
