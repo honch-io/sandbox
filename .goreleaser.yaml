@@ -32,8 +32,11 @@ checksum:
 
 changelog:
   sort: asc
+  abbrev: -1
+  format: "{{ .Message }}"
   filters:
     exclude:
+      - "^Merge "
       - "^docs:"
       - "^test:"
       - "^chore:"
