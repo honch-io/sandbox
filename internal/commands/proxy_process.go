@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,13 +38,26 @@ func writeProxyMode(root string, cfg config.Config, mode proxy.Mode) error {
 	return os.WriteFile(path, []byte(mode.String()), 0o600)
 }
 
+func proxyProbeHost(cfg config.Config) string {
+	switch cfg.Sandbox.ProxyBind {
+	case "", "0.0.0.0", "::":
+		return "127.0.0.1"
+	default:
+		return cfg.Sandbox.ProxyBind
+	}
+}
+
+func proxyAddrLabel(cfg config.Config) string {
+	return net.JoinHostPort(proxyProbeHost(cfg), strconv.Itoa(cfg.Ports.Proxy))
+}
+
 func startProxyProcess(ctx context.Context, root string, cfg config.Config, stdin io.Reader, stdout io.Writer, stderr io.Writer) (*os.Process, error) {
-	if portIsOpen(context.Background(), cfg.Ports.Proxy, 200*time.Millisecond) {
+	if portIsOpenOn(context.Background(), proxyProbeHost(cfg), cfg.Ports.Proxy, 200*time.Millisecond) {
 		if pid, ok := readPID(proxyPIDPath(root, cfg)); ok && processAlive(pid) && processCommandContains(pid, "sandbox proxy-serve") {
-			_ = appendProxyLog(root, cfg, fmt.Sprintf("proxy already running on 127.0.0.1:%d\n", cfg.Ports.Proxy))
+			_ = appendProxyLog(root, cfg, fmt.Sprintf("proxy already running on %s\n", proxyAddrLabel(cfg)))
 			return nil, nil
 		}
-		return nil, fmt.Errorf("proxy port 127.0.0.1:%d is already in use by a non-sandbox process", cfg.Ports.Proxy)
+		return nil, fmt.Errorf("proxy port %s is already in use by a non-sandbox process", proxyAddrLabel(cfg))
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -79,18 +93,18 @@ func startProxyProcess(ctx context.Context, root string, cfg config.Config, stdi
 
 func resolveProxyPortConflict(ctx context.Context, stdin io.Reader, stderr io.Writer, root string, cfg config.Config) error {
 	if pid, ok := readPID(proxyPIDPath(root, cfg)); ok && processAlive(pid) && processCommandContains(pid, "sandbox proxy-serve") {
-		_ = appendProxyLog(root, cfg, fmt.Sprintf("proxy already running on 127.0.0.1:%d\n", cfg.Ports.Proxy))
+		_ = appendProxyLog(root, cfg, fmt.Sprintf("proxy already running on %s\n", proxyAddrLabel(cfg)))
 		return nil
 	}
-	if !portIsOpen(ctx, cfg.Ports.Proxy, 200*time.Millisecond) {
+	if !portIsOpenOn(ctx, proxyProbeHost(cfg), cfg.Ports.Proxy, 200*time.Millisecond) {
 		return nil
 	}
 	occupant, ok := lookupListeningProcess(cfg.Ports.Proxy)
 	if !ok {
-		return fmt.Errorf("proxy port 127.0.0.1:%d is already in use by a non-sandbox process", cfg.Ports.Proxy)
+		return fmt.Errorf("proxy port %s is already in use by a non-sandbox process", proxyAddrLabel(cfg))
 	}
 	if !shouldConfirmProxyPortReuse(stdin, stderr) {
-		return fmt.Errorf("proxy port 127.0.0.1:%d is already in use by %s", cfg.Ports.Proxy, occupant.summary())
+		return fmt.Errorf("proxy port %s is already in use by %s", proxyAddrLabel(cfg), occupant.summary())
 	}
 	ok, err := confirmProxyPortReuse(stdin, stderr, proxyPortReusePrompt(cfg.Ports.Proxy, occupant, root))
 	if err != nil {
@@ -189,7 +203,7 @@ func waitForPortClose(ctx context.Context, port int, timeout time.Duration) erro
 }
 
 func waitForProxyReadyAndWritePID(ctx context.Context, root string, cfg config.Config, pid int, timeout time.Duration) error {
-	if err := waitForPortReady(ctx, cfg.Ports.Proxy, pid, timeout); err != nil {
+	if err := waitForPortReadyOn(ctx, proxyProbeHost(cfg), cfg.Ports.Proxy, pid, timeout); err != nil {
 		return err
 	}
 	return writePIDFile(proxyPIDPath(root, cfg), pid)

@@ -120,12 +120,12 @@ directory of this checkout.
 
 Defaults live in `config/default.yaml`:
 
-- capture repo: `../capture`
+- capture repo: `../platform` (runs the `honch-capture` Cargo workspace package)
 - platform repo: `../platform`
-- worker repo: `../worker`
-- capture source: `https://github.com/honch-io/capture.git`
+- worker repo: `../platform` (runs the `honch-unified-worker` Cargo workspace package)
+- capture source: blank by default; capture now lives in the platform repo
 - platform source: `https://github.com/honch-io/platform.git`
-- worker source: `https://github.com/honch-io/worker.git`
+- worker source: blank by default; worker now lives in the platform repo
 - capture port: `8001`
 - worker port: `8080`
 - ClickHouse port: `8123`

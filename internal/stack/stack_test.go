@@ -97,6 +97,53 @@ func TestStartRunsBackgroundCommandsFromConfiguredSubdirectory(t *testing.T) {
 	}
 }
 
+func TestStartBackgroundCommandPassesConfiguredEnv(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "platform")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(root, "env.txt")
+
+	cfg := config.Config{
+		Repos:   config.ReposConfig{Platform: "platform"},
+		Sandbox: config.SandboxConfig{StateDir: ".state"},
+		Stack: config.StackConfig{StartCommands: []config.CommandConfig{
+			{
+				Repo: "platform",
+				Args: []string{"sh", "-c", "printf '%s\\n' \"$PUBSUB_EMULATOR_HOST\" \"$REDIS_URL\" > " + output},
+				Env: map[string]string{
+					"PUBSUB_EMULATOR_HOST": "localhost:8085",
+					"REDIS_URL":            "redis://localhost:6379",
+				},
+				Background: true,
+				Log:        "platform.log",
+			},
+		}},
+	}
+
+	service := New(root)
+	service.SkipMigrations = true
+	if err := service.Start(context.Background(), cfg); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	var data []byte
+	var err error
+	for i := 0; i < 20; i++ {
+		data, err = os.ReadFile(output)
+		if err == nil {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("background command did not write env: %v", err)
+	}
+	if got, want := string(data), "localhost:8085\nredis://localhost:6379\n"; got != want {
+		t.Fatalf("env output = %q, want %q", got, want)
+	}
+}
+
 func TestStartWaitsForPostgresReadinessBeforeMigrationsAndSeed(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "platform")
@@ -386,6 +433,18 @@ func TestStartRejectsOccupiedServicePortWithStaleLivePID(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "already in use") {
 		t.Fatalf("error did not explain occupied port ownership: %v", err)
+	}
+}
+
+func TestCommandMatchesArgsAcceptsCargoRunPackageBinary(t *testing.T) {
+	if !commandMatchesArgs("target/debug/honch-capture", []string{"cargo", "run", "-p", "honch-capture"}) {
+		t.Fatal("cargo package binary did not match cargo run package args")
+	}
+	if !commandMatchesArgs("cargo run -p honch-capture", []string{"cargo", "run", "-p", "honch-capture"}) {
+		t.Fatal("literal cargo run command did not match args")
+	}
+	if commandMatchesArgs("target/debug/other-service", []string{"cargo", "run", "-p", "honch-capture"}) {
+		t.Fatal("unrelated binary matched cargo package args")
 	}
 }
 

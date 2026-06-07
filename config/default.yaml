@@ -1,11 +1,11 @@
 repos:
-  capture: ../capture
+  capture: ../platform
   platform: ../platform
-  worker: ../worker
+  worker: ../platform
 repo_sources:
-  capture: https://github.com/honch-io/capture.git
+  capture: ""
   platform: https://github.com/honch-io/platform.git
-  worker: https://github.com/honch-io/worker.git
+  worker: ""
 ports:
   capture: 8001
   worker: 8080
@@ -30,11 +30,30 @@ stack:
       working_dir: infra
       args: [docker, compose, up, -d]
     - repo: capture
-      args: [cargo, run]
+      args: [cargo, run, -p, honch-capture]
+      env:
+        SERVER_ADDR: 0.0.0.0:8001
+        PUBSUB_EMULATOR_HOST: localhost:8085
+        PUBSUB_PROJECT_ID: platform-local
+        PUBSUB_EVENTS_TOPIC: events-raw
+        REDIS_URL: redis://localhost:6379
+        DATABASE_URL: postgresql://platform:platform@localhost:5432/platform
+        RATE_LIMIT_PER_SECOND: "1000"
+        RUST_LOG: honch_capture=debug,tower_http=debug
       background: true
       log: capture.log
     - repo: worker
-      args: [cargo, run]
+      args: [cargo, run, -p, honch-unified-worker]
+      env:
+        PUBSUB_EMULATOR_HOST: localhost:8085
+        PUBSUB_PROJECT_ID: platform-local
+        EVENTS_PUBSUB_TOPIC: events-raw
+        EVENTS_PUBSUB_SUBSCRIPTION: events-raw-subscription
+        CLICKHOUSE_URL: http://localhost:8123
+        CLICKHOUSE_DATABASE: platform
+        DATABASE_URL: postgresql://platform:platform@localhost:5432/platform
+        REDIS_URL: redis://localhost:6379/0
+        RUST_LOG: honch_unified_worker=info
       background: true
       log: worker.log
   stop_commands:

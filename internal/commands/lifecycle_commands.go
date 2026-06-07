@@ -298,7 +298,7 @@ func proxyHealthRow(ctx context.Context, cfg config.Config, state session.State,
 	if state.Proxy.Mode != proxy.ModeOnline.String() {
 		return ui.Row{Key: "proxy health", Value: "down: proxy mode " + valueOr(state.Proxy.Mode, "unknown")}
 	}
-	status := health.TCPStatus(ctx, fmt.Sprintf("127.0.0.1:%d", cfg.Ports.Proxy), checkTimeout)
+	status := health.TCPStatus(ctx, proxyAddrLabel(cfg), checkTimeout)
 	if status != "up" {
 		return ui.Row{Key: "proxy health", Value: status}
 	}

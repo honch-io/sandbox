@@ -203,7 +203,23 @@ func processCommandMatches(pid int, args []string) bool {
 		return false
 	}
 	command := strings.TrimSpace(string(out))
-	return strings.Contains(command, strings.Join(args, " "))
+	return commandMatchesArgs(command, args)
+}
+
+func commandMatchesArgs(command string, args []string) bool {
+	if command == "" || len(args) == 0 {
+		return false
+	}
+	joined := strings.Join(args, " ")
+	if strings.Contains(command, joined) {
+		return true
+	}
+	for index := 0; index < len(args)-2; index++ {
+		if args[index] == "cargo" && args[index+1] == "run" && args[index+2] == "-p" && index+3 < len(args) {
+			return strings.Contains(command, args[index+3])
+		}
+	}
+	return false
 }
 
 func (s Service) stopBackgroundProcesses(ctx context.Context, cfg config.Config) error {

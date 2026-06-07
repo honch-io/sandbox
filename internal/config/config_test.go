@@ -6,6 +6,27 @@ import (
 	"testing"
 )
 
+func stringSlicesEqual(left []string, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func assertMapEntries(t *testing.T, got map[string]string, want map[string]string) {
+	t.Helper()
+	for key, value := range want {
+		if got[key] != value {
+			t.Fatalf("%s = %q, want %q", key, got[key], value)
+		}
+	}
+}
+
 func TestLoadUsesDefaultsAndRootOverride(t *testing.T) {
 	root := t.TempDir()
 	override := []byte(`
@@ -31,11 +52,124 @@ sandbox:
 	if cfg.Repos.Platform != "../platform" {
 		t.Fatalf("platform repo default = %q", cfg.Repos.Platform)
 	}
+	if cfg.Repos.Worker != "../platform" {
+		t.Fatalf("worker repo default = %q", cfg.Repos.Worker)
+	}
 	if cfg.Ports.Proxy != 19091 {
 		t.Fatalf("proxy port override = %d", cfg.Ports.Proxy)
 	}
 	if cfg.Sandbox.ProjectID != "11111111-1111-1111-1111-111111111111" {
 		t.Fatalf("project id override = %q", cfg.Sandbox.ProjectID)
+	}
+}
+
+func TestLoadDefaultsUsePlatformWorkspaceServices(t *testing.T) {
+	root := t.TempDir()
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if cfg.Repos.Capture != "../platform" {
+		t.Fatalf("capture repo default = %q", cfg.Repos.Capture)
+	}
+	if cfg.Repos.Worker != "../platform" {
+		t.Fatalf("worker repo default = %q", cfg.Repos.Worker)
+	}
+	if cfg.RepoSources.Capture != "" {
+		t.Fatalf("capture source default = %q", cfg.RepoSources.Capture)
+	}
+	if cfg.RepoSources.Worker != "" {
+		t.Fatalf("worker source default = %q", cfg.RepoSources.Worker)
+	}
+
+	var captureCommand, workerCommand *CommandConfig
+	for index := range cfg.Stack.StartCommands {
+		command := &cfg.Stack.StartCommands[index]
+		switch command.Repo {
+		case "capture":
+			captureCommand = command
+		case "worker":
+			workerCommand = command
+		}
+	}
+	if captureCommand == nil {
+		t.Fatal("capture start command missing")
+	}
+	if captureCommand.WorkingDir != "" {
+		t.Fatalf("capture working dir = %q", captureCommand.WorkingDir)
+	}
+	if got, want := captureCommand.Args, []string{"cargo", "run", "-p", "honch-capture"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("capture args = %#v, want %#v", got, want)
+	}
+	assertMapEntries(t, captureCommand.Env, map[string]string{
+		"SERVER_ADDR":          "0.0.0.0:8001",
+		"PUBSUB_EMULATOR_HOST": "localhost:8085",
+		"PUBSUB_PROJECT_ID":    "platform-local",
+		"PUBSUB_EVENTS_TOPIC":  "events-raw",
+		"REDIS_URL":            "redis://localhost:6379",
+		"DATABASE_URL":         "postgresql://platform:platform@localhost:5432/platform",
+	})
+	if workerCommand == nil {
+		t.Fatal("worker start command missing")
+	}
+	if workerCommand.WorkingDir != "" {
+		t.Fatalf("worker working dir = %q", workerCommand.WorkingDir)
+	}
+	if got, want := workerCommand.Args, []string{"cargo", "run", "-p", "honch-unified-worker"}; !stringSlicesEqual(got, want) {
+		t.Fatalf("worker args = %#v, want %#v", got, want)
+	}
+	assertMapEntries(t, workerCommand.Env, map[string]string{
+		"PUBSUB_EMULATOR_HOST":       "localhost:8085",
+		"PUBSUB_PROJECT_ID":          "platform-local",
+		"EVENTS_PUBSUB_TOPIC":        "events-raw",
+		"EVENTS_PUBSUB_SUBSCRIPTION": "events-raw-subscription",
+		"CLICKHOUSE_URL":             "http://localhost:8123",
+		"CLICKHOUSE_DATABASE":        "platform",
+		"DATABASE_URL":               "postgresql://platform:platform@localhost:5432/platform",
+		"REDIS_URL":                  "redis://localhost:6379/0",
+	})
+}
+
+func TestLoadPreservesCommandEnvAsUppercaseFromYAML(t *testing.T) {
+	root := t.TempDir()
+	defaultDir := filepath.Join(root, "config")
+	if err := os.MkdirAll(defaultDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	defaultConfig := []byte(`
+stack:
+  start_commands:
+    - repo: capture
+      args: [cargo, run, -p, honch-capture]
+      env:
+        PUBSUB_EMULATOR_HOST: localhost:8085
+        REDIS_URL: redis://localhost:6379
+      background: true
+      log: capture.log
+`)
+	if err := os.WriteFile(filepath.Join(defaultDir, "default.yaml"), defaultConfig, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if len(cfg.Stack.StartCommands) != 1 {
+		t.Fatalf("start commands = %d, want 1", len(cfg.Stack.StartCommands))
+	}
+	env := cfg.Stack.StartCommands[0].Env
+	assertMapEntries(t, env, map[string]string{
+		"PUBSUB_EMULATOR_HOST": "localhost:8085",
+		"REDIS_URL":            "redis://localhost:6379",
+	})
+	if _, ok := env["pubsub_emulator_host"]; ok {
+		t.Fatal("env contains lower-case pubsub_emulator_host key")
+	}
+	if _, ok := env["redis_url"]; ok {
+		t.Fatal("env contains lower-case redis_url key")
 	}
 }
 

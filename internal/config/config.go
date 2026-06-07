@@ -100,9 +100,24 @@ func Load(root string) (Config, error) {
 	if cfg.Sandbox.StateDir == "" {
 		cfg.Sandbox.StateDir = filepath.Join(root, ".honch-sandbox")
 	}
+	normalizeCommandEnv(cfg.Stack.StartCommands)
+	normalizeCommandEnv(cfg.Stack.StopCommands)
 	cfg.Sandbox.ProxyBind = normalizedProxyBind(cfg.Sandbox.ProxyBind)
 	cfg.Sandbox.EndpointURL = resolvedEndpointURL(cfg, explicitEndpointURL)
 	return cfg, nil
+}
+
+func normalizeCommandEnv(commands []CommandConfig) {
+	for commandIndex := range commands {
+		if len(commands[commandIndex].Env) == 0 {
+			continue
+		}
+		normalized := make(map[string]string, len(commands[commandIndex].Env))
+		for key, value := range commands[commandIndex].Env {
+			normalized[strings.ToUpper(key)] = value
+		}
+		commands[commandIndex].Env = normalized
+	}
 }
 
 func normalizedProxyBind(bind string) string {
@@ -142,12 +157,12 @@ func configFileSetsEndpointURL(path string) (bool, error) {
 }
 
 func setDefaults(v *viper.Viper) {
-	v.SetDefault("repos.capture", "../capture")
+	v.SetDefault("repos.capture", "../platform")
 	v.SetDefault("repos.platform", "../platform")
-	v.SetDefault("repos.worker", "../worker")
-	v.SetDefault("repo_sources.capture", "https://github.com/honch-io/capture.git")
+	v.SetDefault("repos.worker", "../platform")
+	v.SetDefault("repo_sources.capture", "")
 	v.SetDefault("repo_sources.platform", "https://github.com/honch-io/platform.git")
-	v.SetDefault("repo_sources.worker", "https://github.com/honch-io/worker.git")
+	v.SetDefault("repo_sources.worker", "")
 	v.SetDefault("ports.capture", 8001)
 	v.SetDefault("ports.worker", 8080)
 	v.SetDefault("ports.clickhouse", 8123)
@@ -167,8 +182,39 @@ func setDefaults(v *viper.Viper) {
 	})
 	v.SetDefault("stack.start_commands", []map[string]any{
 		{"repo": "platform", "working_dir": "infra", "args": []string{"docker", "compose", "up", "-d"}},
-		{"repo": "capture", "args": []string{"cargo", "run"}, "background": true, "log": "capture.log"},
-		{"repo": "worker", "args": []string{"cargo", "run"}, "background": true, "log": "worker.log"},
+		{
+			"repo": "capture",
+			"args": []string{"cargo", "run", "-p", "honch-capture"},
+			"env": map[string]string{
+				"SERVER_ADDR":           "0.0.0.0:8001",
+				"PUBSUB_EMULATOR_HOST":  "localhost:8085",
+				"PUBSUB_PROJECT_ID":     "platform-local",
+				"PUBSUB_EVENTS_TOPIC":   "events-raw",
+				"REDIS_URL":             "redis://localhost:6379",
+				"DATABASE_URL":          "postgresql://platform:platform@localhost:5432/platform",
+				"RATE_LIMIT_PER_SECOND": "1000",
+				"RUST_LOG":              "honch_capture=debug,tower_http=debug",
+			},
+			"background": true,
+			"log":        "capture.log",
+		},
+		{
+			"repo": "worker",
+			"args": []string{"cargo", "run", "-p", "honch-unified-worker"},
+			"env": map[string]string{
+				"PUBSUB_EMULATOR_HOST":       "localhost:8085",
+				"PUBSUB_PROJECT_ID":          "platform-local",
+				"EVENTS_PUBSUB_TOPIC":        "events-raw",
+				"EVENTS_PUBSUB_SUBSCRIPTION": "events-raw-subscription",
+				"CLICKHOUSE_URL":             "http://localhost:8123",
+				"CLICKHOUSE_DATABASE":        "platform",
+				"DATABASE_URL":               "postgresql://platform:platform@localhost:5432/platform",
+				"REDIS_URL":                  "redis://localhost:6379/0",
+				"RUST_LOG":                   "honch_unified_worker=info",
+			},
+			"background": true,
+			"log":        "worker.log",
+		},
 	})
 	v.SetDefault("stack.stop_commands", []map[string]any{
 		{"repo": "platform", "working_dir": "infra", "args": []string{"docker", "compose", "down"}},

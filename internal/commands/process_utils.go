@@ -49,8 +49,12 @@ func killProcess(pid int) error {
 }
 
 func portIsOpen(ctx context.Context, port int, timeout time.Duration) bool {
+	return portIsOpenOn(ctx, "127.0.0.1", port, timeout)
+}
+
+func portIsOpenOn(ctx context.Context, host string, port int, timeout time.Duration) bool {
 	dialer := net.Dialer{Timeout: timeout}
-	conn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, fmt.Sprint(port)))
 	if err != nil {
 		return false
 	}
@@ -124,12 +128,16 @@ func processCommandContains(pid int, fragment string) bool {
 }
 
 func waitForPortReady(ctx context.Context, port int, pid int, timeout time.Duration) error {
+	return waitForPortReadyOn(ctx, "127.0.0.1", port, pid, timeout)
+}
+
+func waitForPortReadyOn(ctx context.Context, host string, port int, pid int, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if !processAlive(pid) {
 			return fmt.Errorf("sandbox process %d exited before port %d became ready", pid, port)
 		}
-		if portIsOpen(ctx, port, 100*time.Millisecond) {
+		if portIsOpenOn(ctx, host, port, 100*time.Millisecond) {
 			return nil
 		}
 		select {
@@ -138,7 +146,7 @@ func waitForPortReady(ctx context.Context, port int, pid int, timeout time.Durat
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	return fmt.Errorf("sandbox process %d did not open port %d within %s", pid, port, timeout)
+	return fmt.Errorf("sandbox process %d did not open %s within %s", pid, net.JoinHostPort(host, fmt.Sprint(port)), timeout)
 }
 
 func sandboxProcessIDs(pattern string) []int {

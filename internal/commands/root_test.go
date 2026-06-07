@@ -1112,9 +1112,7 @@ func TestOnboardingCommandCanCloneMissingRepos(t *testing.T) {
 	}
 	parent := filepath.Dir(rootDir)
 	wants := []string{
-		"capture=https://github.com/honch-io/capture.git->" + filepath.Join(parent, "capture"),
 		"platform=https://github.com/honch-io/platform.git->" + filepath.Join(parent, "platform"),
-		"worker=https://github.com/honch-io/worker.git->" + filepath.Join(parent, "worker"),
 	}
 	if strings.Join(calls, "\n") != strings.Join(wants, "\n") {
 		t.Fatalf("clone calls mismatch:\n got: %q\nwant: %q", calls, wants)
@@ -1124,9 +1122,7 @@ func TestOnboardingCommandCanCloneMissingRepos(t *testing.T) {
 		t.Fatalf("read updated config: %v\n%s", err, out.String())
 	}
 	for _, want := range []string{
-		"capture: " + filepath.Join(parent, "capture"),
 		"platform: " + filepath.Join(parent, "platform"),
-		"worker: " + filepath.Join(parent, "worker"),
 	} {
 		if !strings.Contains(string(data), want) {
 			t.Fatalf("updated config missing %q:\n%s", want, string(data))
@@ -1163,8 +1159,8 @@ func TestOnboardingCommandClonesReposWithBlankConfiguredPaths(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("onboarding returned error: %v\n%s", err, out.String())
 	}
-	if strings.Join(calls, ",") != "capture,platform,worker" {
-		t.Fatalf("clone calls = %q, want capture,platform,worker\n%s", calls, out.String())
+	if strings.Join(calls, ",") != "platform" {
+		t.Fatalf("clone calls = %q, want platform\n%s", calls, out.String())
 	}
 }
 
