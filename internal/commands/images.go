@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -54,7 +55,7 @@ func newImagesCommand(deps Dependencies) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return pullDockerImages(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg.Stack.Images)
+				return pullDockerImages(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr(), cfg, cfg.Stack.Images)
 			},
 		},
 	)
@@ -68,7 +69,7 @@ func dockerImageRows(ctx context.Context, cfg config.Config) []ui.Row {
 	}
 	rows := make([]ui.Row, 0, len(images))
 	for _, image := range images {
-		rows = append(rows, ui.Row{Key: image, Value: dockerImageStatus(ctx, image)})
+		rows = append(rows, ui.Row{Key: image, Value: dockerImageStatus(ctx, cfg, image)})
 	}
 	return rows
 }
@@ -76,20 +77,21 @@ func dockerImageRows(ctx context.Context, cfg config.Config) []ui.Row {
 func missingDockerImages(ctx context.Context, cfg config.Config) []string {
 	missing := []string{}
 	for _, image := range uniqueDockerImages(cfg.Stack.Images) {
-		if dockerImageStatus(ctx, image) != "present" {
+		if dockerImageStatus(ctx, cfg, image) != "present" {
 			missing = append(missing, image)
 		}
 	}
 	return missing
 }
 
-func dockerImageStatus(ctx context.Context, image string) string {
+func dockerImageStatus(ctx context.Context, cfg config.Config, image string) string {
 	if commandStatus("docker") == "missing" {
 		return "docker missing"
 	}
 	inspectCtx, cancel := context.WithTimeout(ctx, dockerImageInspectTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(inspectCtx, "docker", "image", "inspect", image)
+	cmd.Env = dockerProcessEnv(cfg)
 	if err := cmd.Run(); err != nil {
 		if errors.Is(inspectCtx.Err(), context.DeadlineExceeded) {
 			return "docker unhealthy"
@@ -99,21 +101,21 @@ func dockerImageStatus(ctx context.Context, image string) string {
 	return "present"
 }
 
-func pullDockerImages(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer, images []string) error {
+func pullDockerImages(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer, cfg config.Config, images []string) error {
 	for _, image := range uniqueDockerImages(images) {
-		if err := pullDockerImage(ctx, stdin, stdout, stderr, image); err != nil {
+		if err := pullDockerImage(ctx, stdin, stdout, stderr, cfg, image); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func pullDockerImage(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer, image string) error {
+func pullDockerImage(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer, cfg config.Config, image string) error {
 	image = strings.TrimSpace(image)
 	if image == "" {
 		return nil
 	}
-	if dockerImageStatus(ctx, image) == "present" && shouldConfirmImagePull(stdin, stderr) {
+	if dockerImageStatus(ctx, cfg, image) == "present" && shouldConfirmImagePull(stdin, stderr) {
 		ok, err := confirmImagePull(stdin, stderr, "You already have "+image+" locally. Pull anyway? [y/N] ")
 		if err != nil {
 			return err
@@ -127,6 +129,7 @@ func pullDockerImage(ctx context.Context, stdin io.Reader, stdout io.Writer, std
 		pullCtx, cancel := context.WithTimeout(ctx, dockerImagePullTimeout)
 		defer cancel()
 		cmd := exec.CommandContext(pullCtx, "docker", "pull", image)
+		cmd.Env = dockerProcessEnv(cfg)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			if errors.Is(pullCtx.Err(), context.DeadlineExceeded) {
@@ -139,6 +142,14 @@ func pullDockerImage(ctx context.Context, stdin io.Reader, stdout io.Writer, std
 		}
 		return nil
 	})
+}
+
+func dockerProcessEnv(cfg config.Config) []string {
+	env := os.Environ()
+	for key, value := range config.DockerEnv(cfg) {
+		env = append(env, key+"="+value)
+	}
+	return env
 }
 
 func uniqueDockerImages(images []string) []string {

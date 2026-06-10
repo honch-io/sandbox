@@ -260,11 +260,12 @@ func newStatusCommand(deps Dependencies) *cobra.Command {
 
 func serviceHealthRows(ctx context.Context, root string, cfg config.Config, state session.State, stateErr error) []ui.Row {
 	checkTimeout := 750 * time.Millisecond
+	dockerServiceHost := config.DefaultDockerServiceHost
 	return []ui.Row{
-		{Key: "postgres", Value: health.TCPStatus(ctx, "127.0.0.1:5432", checkTimeout)},
-		{Key: "redis", Value: health.TCPStatus(ctx, "127.0.0.1:6379", checkTimeout)},
-		{Key: "pubsub", Value: health.TCPStatus(ctx, "127.0.0.1:8085", checkTimeout)},
-		{Key: "clickhouse", Value: health.ClickHouseStatus(ctx, fmt.Sprintf("127.0.0.1:%d", cfg.Ports.ClickHouse), checkTimeout)},
+		{Key: "postgres", Value: health.TCPStatus(ctx, dockerServiceHost+":5432", checkTimeout)},
+		{Key: "redis", Value: health.TCPStatus(ctx, dockerServiceHost+":6379", checkTimeout)},
+		{Key: "pubsub", Value: health.TCPStatus(ctx, dockerServiceHost+":8085", checkTimeout)},
+		{Key: "clickhouse", Value: health.ClickHouseStatus(ctx, fmt.Sprintf("%s:%d", dockerServiceHost, cfg.Ports.ClickHouse), checkTimeout)},
 		{Key: "capture health", Value: health.HTTPStatus(ctx, fmt.Sprintf("http://127.0.0.1:%d/health", cfg.Ports.Capture), checkTimeout)},
 		{Key: "worker health", Value: health.HTTPStatus(ctx, fmt.Sprintf("http://127.0.0.1:%d/", cfg.Ports.Worker), checkTimeout)},
 		proxyHealthRow(ctx, cfg, state, stateErr, checkTimeout),

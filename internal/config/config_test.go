@@ -63,6 +63,19 @@ sandbox:
 	}
 }
 
+func TestLoadDefaultsDockerHostToRemoteDockerPC(t *testing.T) {
+	root := t.TempDir()
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if cfg.Sandbox.DockerHost != "tcp://192.168.1.146:2375" {
+		t.Fatalf("DockerHost = %q", cfg.Sandbox.DockerHost)
+	}
+}
+
 func TestLoadDefaultsUsePlatformWorkspaceServices(t *testing.T) {
 	root := t.TempDir()
 
@@ -105,11 +118,11 @@ func TestLoadDefaultsUsePlatformWorkspaceServices(t *testing.T) {
 	}
 	assertMapEntries(t, captureCommand.Env, map[string]string{
 		"SERVER_ADDR":          "0.0.0.0:8001",
-		"PUBSUB_EMULATOR_HOST": "localhost:8085",
+		"PUBSUB_EMULATOR_HOST": "192.168.1.146:8085",
 		"PUBSUB_PROJECT_ID":    "platform-local",
 		"PUBSUB_EVENTS_TOPIC":  "events-raw",
-		"REDIS_URL":            "redis://localhost:6379",
-		"DATABASE_URL":         "postgresql://platform:platform@localhost:5432/platform",
+		"REDIS_URL":            "redis://192.168.1.146:6379",
+		"DATABASE_URL":         "postgresql://platform:platform@192.168.1.146:5432/platform",
 	})
 	if workerCommand == nil {
 		t.Fatal("worker start command missing")
@@ -121,14 +134,14 @@ func TestLoadDefaultsUsePlatformWorkspaceServices(t *testing.T) {
 		t.Fatalf("worker args = %#v, want %#v", got, want)
 	}
 	assertMapEntries(t, workerCommand.Env, map[string]string{
-		"PUBSUB_EMULATOR_HOST":       "localhost:8085",
+		"PUBSUB_EMULATOR_HOST":       "192.168.1.146:8085",
 		"PUBSUB_PROJECT_ID":          "platform-local",
 		"EVENTS_PUBSUB_TOPIC":        "events-raw",
 		"EVENTS_PUBSUB_SUBSCRIPTION": "events-raw-subscription",
-		"CLICKHOUSE_URL":             "http://localhost:8123",
+		"CLICKHOUSE_URL":             "http://192.168.1.146:8123",
 		"CLICKHOUSE_DATABASE":        "platform",
-		"DATABASE_URL":               "postgresql://platform:platform@localhost:5432/platform",
-		"REDIS_URL":                  "redis://localhost:6379/0",
+		"DATABASE_URL":               "postgresql://platform:platform@192.168.1.146:5432/platform",
+		"REDIS_URL":                  "redis://192.168.1.146:6379/0",
 	})
 }
 
@@ -236,6 +249,21 @@ func TestLoadFallsBackToLoopbackForEmptyProxyBindOverride(t *testing.T) {
 	}
 	if cfg.Sandbox.ProxyBind != "127.0.0.1" {
 		t.Fatalf("ProxyBind = %q, want loopback fallback", cfg.Sandbox.ProxyBind)
+	}
+}
+
+func TestLoadFallsBackToRemoteDockerPCForEmptyDockerHostOverride(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".honch-sandbox.yaml"), []byte("sandbox:\n  docker_host: \"\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.Sandbox.DockerHost != "tcp://192.168.1.146:2375" {
+		t.Fatalf("DockerHost = %q, want remote Docker PC fallback", cfg.Sandbox.DockerHost)
 	}
 }
 

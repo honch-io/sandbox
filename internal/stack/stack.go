@@ -29,7 +29,7 @@ func (s Service) Start(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 	if runMigrations || sandboxProjectConfigured(cfg) {
-		if err := s.waitForPostgresReady(ctx, 30*time.Second); err != nil {
+		if err := s.waitForPostgresReady(ctx, cfg, 30*time.Second); err != nil {
 			return err
 		}
 	}

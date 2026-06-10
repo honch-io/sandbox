@@ -114,7 +114,7 @@ func doctorFix(key string) ui.Row {
 	case "brew":
 		return ui.Row{Key: key, Value: "install Homebrew"}
 	case "docker":
-		return ui.Row{Key: key, Value: "install and start Docker"}
+		return ui.Row{Key: key, Value: "install Docker CLI and allow access to tcp://192.168.1.146:2375"}
 	case "bun":
 		return ui.Row{Key: key, Value: "install Bun"}
 	case "cargo":
