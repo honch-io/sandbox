@@ -45,6 +45,8 @@ type SandboxConfig struct {
 	ClickHouseDatabase string `mapstructure:"clickhouse_database"`
 	EndpointURL        string `mapstructure:"endpoint_url"`
 	ProxyBind          string `mapstructure:"proxy_bind"`
+	DockerHost         string `mapstructure:"docker_host"`
+	ServiceHost        string `mapstructure:"service_host"`
 	StateDir           string `mapstructure:"state_dir"`
 	IDFPath            string `mapstructure:"idf_path"`
 }
@@ -103,7 +105,11 @@ func Load(root string) (Config, error) {
 	normalizeCommandEnv(cfg.Stack.StartCommands)
 	normalizeCommandEnv(cfg.Stack.StopCommands)
 	cfg.Sandbox.ProxyBind = normalizedProxyBind(cfg.Sandbox.ProxyBind)
+	cfg.Sandbox.DockerHost = normalizedDockerHost(cfg.Sandbox.DockerHost)
+	cfg.Sandbox.ServiceHost = normalizedServiceHost(cfg.Sandbox.ServiceHost)
 	cfg.Sandbox.EndpointURL = resolvedEndpointURL(cfg, explicitEndpointURL)
+	interpolateCommands(cfg.Stack.StartCommands, cfg)
+	interpolateCommands(cfg.Stack.StopCommands, cfg)
 	return cfg, nil
 }
 
@@ -126,6 +132,65 @@ func normalizedProxyBind(bind string) string {
 		return "127.0.0.1"
 	}
 	return bind
+}
+
+const DefaultDockerHost = ""
+const DefaultServiceHost = "127.0.0.1"
+const DefaultDockerServiceHost = DefaultServiceHost
+
+func normalizedDockerHost(host string) string {
+	return strings.TrimSpace(host)
+}
+
+func normalizedServiceHost(host string) string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return DefaultServiceHost
+	}
+	return host
+}
+
+func ServiceHost(cfg Config) string {
+	return normalizedServiceHost(cfg.Sandbox.ServiceHost)
+}
+
+func DockerEnv(cfg Config) map[string]string {
+	host := normalizedDockerHost(cfg.Sandbox.DockerHost)
+	if host == "" {
+		return nil
+	}
+	return map[string]string{
+		"DOCKER_CONFIG": filepath.Join(os.TempDir(), "honch-sandbox-docker-config"),
+		"DOCKER_HOST":   host,
+	}
+}
+
+func interpolateCommands(commands []CommandConfig, cfg Config) {
+	replacements := map[string]string{
+		"${ports.capture}":               fmt.Sprint(cfg.Ports.Capture),
+		"${ports.worker}":                fmt.Sprint(cfg.Ports.Worker),
+		"${ports.clickhouse}":            fmt.Sprint(cfg.Ports.ClickHouse),
+		"${ports.proxy}":                 fmt.Sprint(cfg.Ports.Proxy),
+		"${ports.control}":               fmt.Sprint(cfg.Ports.Control),
+		"${sandbox.service_host}":        cfg.Sandbox.ServiceHost,
+		"${sandbox.docker_host}":         cfg.Sandbox.DockerHost,
+		"${sandbox.clickhouse_database}": cfg.Sandbox.ClickHouseDatabase,
+	}
+	for commandIndex := range commands {
+		for argIndex, arg := range commands[commandIndex].Args {
+			commands[commandIndex].Args[argIndex] = interpolateString(arg, replacements)
+		}
+		for key, value := range commands[commandIndex].Env {
+			commands[commandIndex].Env[key] = interpolateString(value, replacements)
+		}
+	}
+}
+
+func interpolateString(value string, replacements map[string]string) string {
+	for old, replacement := range replacements {
+		value = strings.ReplaceAll(value, old, replacement)
+	}
+	return value
 }
 
 func resolvedEndpointURL(cfg Config, explicitEndpointURL bool) string {
@@ -173,6 +238,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("sandbox.clickhouse_database", "platform")
 	v.SetDefault("sandbox.endpoint_url", "http://127.0.0.1:8001")
 	v.SetDefault("sandbox.proxy_bind", "127.0.0.1")
+	v.SetDefault("sandbox.docker_host", DefaultDockerHost)
+	v.SetDefault("sandbox.service_host", DefaultServiceHost)
 	v.SetDefault("sandbox.state_dir", ".honch-sandbox")
 	v.SetDefault("stack.images", []string{
 		"postgres:16-alpine",
@@ -181,19 +248,25 @@ func setDefaults(v *viper.Viper) {
 		"gcr.io/google.com/cloudsdktool/cloud-sdk:emulators",
 	})
 	v.SetDefault("stack.start_commands", []map[string]any{
-		{"repo": "platform", "working_dir": "infra", "args": []string{"docker", "compose", "up", "-d"}},
+		{
+			"repo":        "platform",
+			"working_dir": "infra",
+			"args":        []string{"docker", "compose", "up", "-d"},
+		},
 		{
 			"repo": "capture",
 			"args": []string{"cargo", "run", "-p", "honch-capture"},
 			"env": map[string]string{
-				"SERVER_ADDR":           "0.0.0.0:8001",
-				"PUBSUB_EMULATOR_HOST":  "localhost:8085",
+				"SERVER_ADDR":           "0.0.0.0:${ports.capture}",
+				"PUBSUB_EMULATOR_HOST":  "${sandbox.service_host}:8085",
 				"PUBSUB_PROJECT_ID":     "platform-local",
 				"PUBSUB_EVENTS_TOPIC":   "events-raw",
-				"REDIS_URL":             "redis://localhost:6379",
-				"DATABASE_URL":          "postgresql://platform:platform@localhost:5432/platform",
+				"REDIS_URL":             "redis://${sandbox.service_host}:6379",
+				"DATABASE_URL":          "postgresql://platform:platform@${sandbox.service_host}:5432/platform",
 				"RATE_LIMIT_PER_SECOND": "1000",
 				"RUST_LOG":              "honch_capture=debug,tower_http=debug",
+				"COREDUMP_BUCKET":       "honch-coredumps",
+				"STORAGE_EMULATOR_HOST": "http://${sandbox.service_host}:4443",
 			},
 			"background": true,
 			"log":        "capture.log",
@@ -202,14 +275,15 @@ func setDefaults(v *viper.Viper) {
 			"repo": "worker",
 			"args": []string{"cargo", "run", "-p", "honch-unified-worker"},
 			"env": map[string]string{
-				"PUBSUB_EMULATOR_HOST":       "localhost:8085",
+				"PORT":                         "${ports.worker}",
+				"PUBSUB_EMULATOR_HOST":       "${sandbox.service_host}:8085",
 				"PUBSUB_PROJECT_ID":          "platform-local",
 				"EVENTS_PUBSUB_TOPIC":        "events-raw",
 				"EVENTS_PUBSUB_SUBSCRIPTION": "events-raw-subscription",
-				"CLICKHOUSE_URL":             "http://localhost:8123",
-				"CLICKHOUSE_DATABASE":        "platform",
-				"DATABASE_URL":               "postgresql://platform:platform@localhost:5432/platform",
-				"REDIS_URL":                  "redis://localhost:6379/0",
+				"CLICKHOUSE_URL":             "http://${sandbox.service_host}:${ports.clickhouse}",
+				"CLICKHOUSE_DATABASE":        "${sandbox.clickhouse_database}",
+				"DATABASE_URL":               "postgresql://platform:platform@${sandbox.service_host}:5432/platform",
+				"REDIS_URL":                  "redis://${sandbox.service_host}:6379/0",
 				"RUST_LOG":                   "honch_unified_worker=info",
 			},
 			"background": true,
@@ -217,6 +291,10 @@ func setDefaults(v *viper.Viper) {
 		},
 	})
 	v.SetDefault("stack.stop_commands", []map[string]any{
-		{"repo": "platform", "working_dir": "infra", "args": []string{"docker", "compose", "down"}},
+		{
+			"repo":        "platform",
+			"working_dir": "infra",
+			"args":        []string{"docker", "compose", "down"},
+		},
 	})
 }

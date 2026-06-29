@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -28,7 +29,7 @@ func (s Service) runCommands(ctx context.Context, cfg config.Config, commands []
 			}
 			continue
 		}
-		if err := run(ctx, dir, command.Args[0], command.Args[1:]...); err != nil {
+		if err := runCommand(ctx, dir, dockerCommandEnv(cfg, command), command.Args[0], command.Args[1:]...); err != nil {
 			return fmt.Errorf("%s: %w", command.Repo, err)
 		}
 	}
@@ -51,8 +52,18 @@ func (s Service) resolveCommandDir(repoPath string, workingDir string) string {
 }
 
 func run(ctx context.Context, dir string, name string, args ...string) error {
+	return runCommand(ctx, dir, nil, name, args...)
+}
+
+func runCommand(ctx context.Context, dir string, env map[string]string, name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
+	if len(env) > 0 {
+		cmd.Env = os.Environ()
+		for key, value := range env {
+			cmd.Env = append(cmd.Env, key+"="+value)
+		}
+	}
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -60,6 +71,32 @@ func run(ctx context.Context, dir string, name string, args ...string) error {
 		return fmt.Errorf("%s %s failed: %s", name, strings.Join(args, " "), strings.TrimSpace(out.String()))
 	}
 	return nil
+}
+
+func dockerCommandEnv(cfg config.Config, command config.CommandConfig) map[string]string {
+	env := map[string]string{}
+	for key, value := range command.Env {
+		env[key] = value
+	}
+	if commandUsesDocker(command.Args) {
+		for key, value := range config.DockerEnv(cfg) {
+			env[key] = value
+		}
+	}
+	if len(env) == 0 {
+		return nil
+	}
+	return env
+}
+
+func commandUsesDocker(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	if args[0] == "docker" {
+		return true
+	}
+	return args[0] == "sh" && len(args) >= 3 && strings.Contains(args[2], "docker ")
 }
 
 func splitCommands(commands []config.CommandConfig) ([]config.CommandConfig, []config.CommandConfig) {

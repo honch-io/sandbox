@@ -1,0 +1,450 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SANDBOX_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WORKSPACE_ROOT="$(cd "$SANDBOX_ROOT/.." && pwd)"
+ENV_FILE="${REMOTE_DEV_ENV_FILE:-$SANDBOX_ROOT/.remote-dev.env}"
+
+# Build host + remote paths are machine-local — configure them in
+# .remote-dev.env (gitignored; copy from .remote-dev.env.example). No
+# personal host/path is baked into the tool, so it ships clean for everyone.
+REMOTE_PRIMARY_HOST="${REMOTE_PRIMARY_HOST:-}"
+REMOTE_FALLBACK_HOST="${REMOTE_FALLBACK_HOST:-}"
+REMOTE_CONNECT_TIMEOUT="${REMOTE_CONNECT_TIMEOUT:-1}"
+REMOTE_HOST="${REMOTE_HOST:-}"
+REMOTE_ROOT="${REMOTE_ROOT:-honch-io}"
+ESP32_PORT="${ESP32_PORT:-/dev/ttyUSB0}"
+PICO_PORT="${PICO_PORT:-/dev/ttyACM0}"
+IDF_PATH="${IDF_PATH:-}"
+DEVICE_HOST="${DEVICE_HOST:-}"
+CAPTURE_PORT="${CAPTURE_PORT:-8001}"
+WORKER_PORT="${WORKER_PORT:-8082}"
+PROXY_PORT="${PROXY_PORT:-8080}"
+CLICKHOUSE_NATIVE_PORT="${CLICKHOUSE_NATIVE_PORT:-19000}"
+DRY_RUN=0
+
+if [[ -f "$ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+fi
+DEVICE_HOST_EXPLICIT="$DEVICE_HOST"
+
+usage() {
+  cat <<'EOF'
+Usage: remote-dev <command> [args...]
+
+Commands:
+  help                  Show this help
+  print-env             Print resolved local configuration
+  sync                  Sync local SDK, sandbox, and platform to the remote host
+  setup                 Prepare remote user-local tool paths and serial access
+  remote <cmd...>       Run a command from the remote workspace root
+  remote-tty <cmd...>   Run a command from the remote workspace root with a TTY
+  sandbox <cmd...>      Run ./honch --plain sandbox <cmd...> on the remote host
+  start                 Sync, setup, configure, and start the remote sandbox stack
+  stop                  Stop the remote sandbox stack
+  status                Show remote devices, tools, and sandbox status
+  esp32 [args...]       Sync/start and run the ESP32 sandbox hardware adapter
+  pico                  Sync and run Pico W MicroPython smoke checks
+
+Options:
+  --dry-run             Print ssh/rsync commands instead of running them
+EOF
+}
+
+log() {
+  printf 'remote-dev: %s\n' "$*" >&2
+}
+
+set_device_host_from_remote() {
+  if [[ -z "$DEVICE_HOST" && -n "$REMOTE_HOST" ]]; then
+    DEVICE_HOST="${REMOTE_HOST#*@}"
+  fi
+}
+
+select_device_host_for_hardware() {
+  resolve_remote_host
+  if [[ -n "$DEVICE_HOST_EXPLICIT" || "$DRY_RUN" == 1 ]]; then
+    return 0
+  fi
+  if [[ "$DEVICE_HOST" != 100.* ]]; then
+    return 0
+  fi
+
+  local lan_ip
+  lan_ip="$(ssh -o ConnectTimeout="$REMOTE_CONNECT_TIMEOUT" "$REMOTE_HOST" \
+    "bash -lc 'ip -4 -o addr show scope global up | awk '\''\$2 !~ /^(tailscale|docker|br-|lo)/ { split(\$4, a, \"/\"); print a[1]; exit }'\'''")"
+  if [[ -n "$lan_ip" ]]; then
+    DEVICE_HOST="$lan_ip"
+    log "using remote LAN device host $DEVICE_HOST"
+  fi
+}
+
+resolve_remote_host() {
+  if [[ -n "$REMOTE_HOST" ]]; then
+    set_device_host_from_remote
+    return 0
+  fi
+
+  if [[ "$DRY_RUN" == 1 ]]; then
+    REMOTE_HOST="$REMOTE_PRIMARY_HOST"
+    set_device_host_from_remote
+    return 0
+  fi
+
+  local candidate
+  for candidate in "$REMOTE_PRIMARY_HOST" "$REMOTE_FALLBACK_HOST"; do
+    if [[ -z "$candidate" ]]; then
+      continue
+    fi
+    log "trying SSH host $candidate"
+    if ssh -o BatchMode=yes -o ConnectTimeout="$REMOTE_CONNECT_TIMEOUT" "$candidate" true >/dev/null 2>&1; then
+      REMOTE_HOST="$candidate"
+      set_device_host_from_remote
+      log "using SSH host $REMOTE_HOST"
+      return 0
+    fi
+  done
+
+  if [[ -z "$REMOTE_PRIMARY_HOST" && -z "$REMOTE_FALLBACK_HOST" ]]; then
+    log "no build host configured — copy .remote-dev.env.example to .remote-dev.env and set REMOTE_HOST (see the sandbox README)."
+  else
+    log "unable to reach remote host via $REMOTE_PRIMARY_HOST or $REMOTE_FALLBACK_HOST"
+  fi
+  return 1
+}
+
+run_cmd() {
+  if [[ "$DRY_RUN" == 1 ]]; then
+    printf '%q ' "$@"
+    printf '\n'
+    return 0
+  fi
+  "$@"
+}
+
+ssh_cmd() {
+  resolve_remote_host
+  if [[ "$DRY_RUN" == 1 ]]; then
+    run_cmd ssh -o ConnectTimeout="$REMOTE_CONNECT_TIMEOUT" "$REMOTE_HOST" "bash -lc $(printf '%q' "$1")"
+    return 0
+  fi
+  local encoded
+  encoded="$(printf '%s' "$1" | base64 | tr -d '\n')"
+  run_cmd ssh -o ConnectTimeout="$REMOTE_CONNECT_TIMEOUT" "$REMOTE_HOST" "printf '%s' '$encoded' | base64 -d | bash"
+}
+
+ssh_tty_cmd() {
+  resolve_remote_host
+  if [[ "$DRY_RUN" == 1 ]]; then
+    run_cmd ssh -tt -o ConnectTimeout="$REMOTE_CONNECT_TIMEOUT" "$REMOTE_HOST" "bash -lc $(printf '%q' "$1")"
+    return 0
+  fi
+  local encoded
+  encoded="$(printf '%s' "$1" | base64 | tr -d '\n')"
+  run_cmd ssh -tt -o ConnectTimeout="$REMOTE_CONNECT_TIMEOUT" "$REMOTE_HOST" "printf '%s' '$encoded' | base64 -d | bash"
+}
+
+remote_env='export PATH="$HOME/.cargo/bin:$HOME/.espressif/python_env/idf6.0_py3.14_env/bin:$PATH"'
+
+remote_workspace() {
+  local body="$1"
+  ssh_cmd "$remote_env; cd '$REMOTE_ROOT'; $body"
+}
+
+remote_workspace_tty() {
+  local body="$1"
+  ssh_tty_cmd "$remote_env; cd '$REMOTE_ROOT'; $body"
+}
+
+rsync_repo() {
+  local name="$1"
+  local src="$WORKSPACE_ROOT/$name/"
+  resolve_remote_host
+  local dst="$REMOTE_HOST:$REMOTE_ROOT/$name/"
+  if [[ ! -d "$src" ]]; then
+    log "skip missing local repo: $name"
+    return 0
+  fi
+  run_cmd rsync -a --delete \
+    --exclude .git \
+    --exclude .honch-sandbox \
+    --exclude .honch-sandbox.yaml \
+    --exclude .remote-dev.env \
+    --exclude /honch \
+    --exclude node_modules \
+    --exclude target \
+    --exclude dist \
+    --exclude build \
+    --exclude 'build-*' \
+    --exclude .venv \
+    --exclude .pytest_cache \
+    "$src" "$dst"
+}
+
+cmd_print_env() {
+  resolve_remote_host || true
+  cat <<EOF
+REMOTE_PRIMARY_HOST=$REMOTE_PRIMARY_HOST
+REMOTE_FALLBACK_HOST=$REMOTE_FALLBACK_HOST
+REMOTE_CONNECT_TIMEOUT=$REMOTE_CONNECT_TIMEOUT
+REMOTE_HOST=$REMOTE_HOST
+REMOTE_ROOT=$REMOTE_ROOT
+ESP32_PORT=$ESP32_PORT
+PICO_PORT=$PICO_PORT
+IDF_PATH=$IDF_PATH
+DEVICE_HOST=$DEVICE_HOST
+CAPTURE_PORT=$CAPTURE_PORT
+WORKER_PORT=$WORKER_PORT
+PROXY_PORT=$PROXY_PORT
+CLICKHOUSE_NATIVE_PORT=$CLICKHOUSE_NATIVE_PORT
+EOF
+}
+
+cmd_patch_remote_compose() {
+  remote_workspace "python3 -c 'from pathlib import Path; p = Path(\"platform/infra/docker-compose.yml\"); s = p.read_text(); s = s.replace(\"\\\"9000:9000\\\"\", \"\\\"$CLICKHOUSE_NATIVE_PORT:9000\\\"\"); p.write_text(s)'"
+}
+
+cmd_sync() {
+  ssh_cmd "mkdir -p '$REMOTE_ROOT'"
+  rsync_repo SDK
+  rsync_repo sandbox
+  rsync_repo platform
+  cmd_patch_remote_compose
+}
+
+cmd_setup() {
+  ssh_cmd "if ! command -v docker >/dev/null 2>&1; then echo 'docker missing' >&2; exit 1; fi"
+  ssh_cmd "if [[ -d '$IDF_PATH' ]]; then true; else echo 'missing ESP-IDF at $IDF_PATH' >&2; exit 1; fi"
+  ssh_cmd "if [[ -x \"\$HOME/.cargo/bin/cargo\" ]]; then true; else curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal; fi"
+  ssh_cmd "'$IDF_PATH/export.sh' >/dev/null 2>&1 || true; \"\$HOME/.espressif/python_env/idf6.0_py3.14_env/bin/pip\" show mpremote cmake ninja >/dev/null 2>&1 || \"\$HOME/.espressif/python_env/idf6.0_py3.14_env/bin/pip\" install mpremote cmake ninja"
+  remote_workspace "cd platform && if [[ -x node_modules/.bin/drizzle-kit ]]; then true; else bun install; fi"
+  ssh_cmd "docker run --rm --privileged -v /dev:/host-dev gcr.io/google.com/cloudsdktool/cloud-sdk:emulators chmod 666 '/host-dev/${ESP32_PORT#/dev/}' '/host-dev/${PICO_PORT#/dev/}'"
+}
+
+cmd_build_honch() {
+  remote_workspace "cd sandbox && go build -o honch ./cmd/honch"
+}
+
+cmd_configure_sandbox() {
+  remote_workspace "cd sandbox && ./honch --plain sandbox config set sandbox.service_host '$DEVICE_HOST' && ./honch --plain sandbox config set sandbox.proxy_bind 0.0.0.0 && ./honch --plain sandbox config set ports.worker '$WORKER_PORT' && ./honch --plain sandbox config set ports.proxy '$PROXY_PORT' && ./honch --plain sandbox config set sandbox.idf_path '$IDF_PATH'"
+}
+
+cmd_start_docker_deps() {
+  remote_workspace "cd platform/infra && docker compose up -d"
+  remote_workspace "for i in \$(seq 1 45); do if curl -fs --max-time 2 http://127.0.0.1:8085 >/dev/null 2>&1 && curl -fs --max-time 2 http://127.0.0.1:8123/ping >/dev/null 2>&1; then exit 0; fi; sleep 1; done; echo 'docker dependencies did not become ready' >&2; exit 1"
+}
+
+cmd_start() {
+  cmd_sync
+  cmd_setup
+  cmd_build_honch
+  select_device_host_for_hardware
+  cmd_configure_sandbox
+  cmd_start_docker_deps
+  remote_workspace "cd sandbox && ./honch --plain sandbox start --migrate"
+}
+
+cmd_stop() {
+  cmd_build_honch
+  remote_workspace "cd sandbox && if [[ -x ./honch ]]; then ./honch --plain sandbox stop; else true; fi"
+}
+
+cmd_status() {
+  ssh_cmd "$remote_env; hostname; stat -c '%n %U %G %a' '$ESP32_PORT' '$PICO_PORT' 2>/dev/null || true; for c in go cargo rustc cmake ninja mpremote docker; do printf '%s: ' \"\$c\"; command -v \"\$c\" || true; done"
+  remote_workspace "cd sandbox && if [[ -x ./honch ]]; then ./honch --plain sandbox status || true; else echo 'honch binary missing; run remote-dev start'; fi"
+}
+
+cmd_sandbox() {
+  cmd_build_honch
+  local quoted_args=""
+  local arg
+  for arg in "$@"; do
+    quoted_args+=" $(printf '%q' "$arg")"
+  done
+  remote_workspace "cd sandbox && ./honch --plain sandbox$quoted_args"
+}
+
+cmd_esp32() {
+  cmd_start
+  select_device_host_for_hardware
+  local wifi_ssid="${HONCH_SANDBOX_WIFI_SSID:-}"
+  local wifi_password="${HONCH_SANDBOX_WIFI_PASSWORD:-}"
+  local erase_flash=1
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --wifi-ssid)
+        wifi_ssid="${2:-}"
+        shift 2
+        ;;
+      --wifi-password)
+        wifi_password="${2:-}"
+        shift 2
+        ;;
+      --no-erase-flash)
+        erase_flash=0
+        shift
+        ;;
+      *)
+        echo "unsupported esp32 argument: $1" >&2
+        exit 2
+        ;;
+    esac
+  done
+
+  local wifi_ssid_q wifi_password_q
+  printf -v wifi_ssid_q '%q' "$wifi_ssid"
+  printf -v wifi_password_q '%q' "$wifi_password"
+
+  remote_workspace "$(cat <<EOF
+set -euo pipefail
+cd sandbox
+
+read_sdkconfig_value() {
+  local key="\$1"
+  local file="../SDK/ports/esp-idf/local/sdkconfig.defaults"
+  if [[ ! -f "\$file" ]]; then
+    return 1
+  fi
+  sed -n "s/^\${key}=//p" "\$file" | tail -1 | sed 's/^"//; s/"$//'
+}
+
+wifi_ssid=$wifi_ssid_q
+wifi_password=$wifi_password_q
+if [[ -z "\$wifi_ssid" ]]; then
+  wifi_ssid="\$(read_sdkconfig_value CONFIG_WIFI_SSID || true)"
+fi
+if [[ -z "\$wifi_password" ]]; then
+  wifi_password="\$(read_sdkconfig_value CONFIG_WIFI_PASSWORD || true)"
+fi
+if [[ -z "\$wifi_ssid" || -z "\$wifi_password" ]]; then
+  echo "Wi-Fi credentials are required for ESP32 hardware runs" >&2
+  exit 2
+fi
+
+build_dir="\$(pwd)/.honch-sandbox/build/esp-idf"
+endpoint="http://$DEVICE_HOST:$PROXY_PORT"
+. '$IDF_PATH/export.sh' >/dev/null
+idf.py -C harnesses/esp-idf -B "\$build_dir" \\
+  -D "SDKCONFIG=\$build_dir/sdkconfig" \\
+  -D "HONCH_SANDBOX_HOST=\$endpoint" \\
+  -D "HONCH_SANDBOX_API_KEY=honch_e2e_test_key" \\
+  -D "HONCH_SANDBOX_USE_WIFI=ON" \\
+  -D "HONCH_SANDBOX_WIFI_SSID=\$wifi_ssid" \\
+  -D "HONCH_SANDBOX_WIFI_PASSWORD=\$wifi_password" \\
+  set-target esp32
+idf.py -C harnesses/esp-idf -B "\$build_dir" build
+if [[ "$erase_flash" == 1 ]]; then
+  python -m esptool -p '$ESP32_PORT' -b 460800 --before default-reset --after no-reset --chip esp32 erase-flash
+fi
+cd "\$build_dir"
+python -m esptool -p '$ESP32_PORT' -b 460800 --before default-reset --after no-reset --chip esp32 write-flash @flash_args
+python - <<'PY'
+import serial
+import sys
+import time
+
+port = "$ESP32_PORT"
+marker = b'"ready":true'
+serial_port = serial.Serial()
+serial_port.port = port
+serial_port.baudrate = 115200
+serial_port.timeout = 0.1
+serial_port.dtr = False
+serial_port.rts = False
+serial_port.open()
+try:
+    serial_port.reset_input_buffer()
+    serial_port.dtr = False
+    serial_port.rts = True
+    time.sleep(0.15)
+    serial_port.rts = False
+
+    deadline = time.time() + 45
+    buffer = bytearray()
+    while time.time() < deadline:
+        chunk = serial_port.read(512)
+        if not chunk:
+            continue
+        sys.stdout.buffer.write(chunk)
+        sys.stdout.buffer.flush()
+        buffer.extend(chunk)
+        if marker in buffer:
+            print("\\nESP32 ready marker observed")
+            raise SystemExit(0)
+    print("\\nESP32 ready marker was not observed within 45s", file=sys.stderr)
+    raise SystemExit(124)
+finally:
+    serial_port.close()
+PY
+EOF
+)"
+}
+
+cmd_pico() {
+  cmd_sync
+  cmd_setup
+  remote_workspace "cd SDK/ports/micropython && \"\$HOME/.espressif/python_env/idf6.0_py3.14_env/bin/mpremote\" connect '$PICO_PORT' exec 'import sys; print(sys.implementation); import network; print(\"network ok\")'"
+  remote_workspace "cd SDK/ports/micropython && \"\$HOME/.espressif/python_env/idf6.0_py3.14_env/bin/mpremote\" connect '$PICO_PORT' fs mkdir :honch || true"
+  remote_workspace "cd SDK/ports/micropython && \"\$HOME/.espressif/python_env/idf6.0_py3.14_env/bin/mpremote\" connect '$PICO_PORT' fs cp honch/__init__.py :honch/__init__.py"
+  remote_workspace "cd SDK/ports/micropython && \"\$HOME/.espressif/python_env/idf6.0_py3.14_env/bin/mpremote\" connect '$PICO_PORT' fs cp honch/client.py :honch/client.py"
+  remote_workspace "cd SDK/ports/micropython && \"\$HOME/.espressif/python_env/idf6.0_py3.14_env/bin/mpremote\" connect '$PICO_PORT' fs cp honch/config.py :honch/config.py"
+  remote_workspace "cd SDK/ports/micropython && \"\$HOME/.espressif/python_env/idf6.0_py3.14_env/bin/mpremote\" connect '$PICO_PORT' fs cp honch/errors.py :honch/errors.py"
+  remote_workspace "cd SDK/ports/micropython && \"\$HOME/.espressif/python_env/idf6.0_py3.14_env/bin/mpremote\" connect '$PICO_PORT' fs cp honch/validation.py :honch/validation.py"
+  remote_workspace "cd SDK/ports/micropython && \"\$HOME/.espressif/python_env/idf6.0_py3.14_env/bin/mpremote\" connect '$PICO_PORT' fs cp examples/secrets.py :secrets.py"
+  remote_workspace "cd SDK/ports/micropython && \"\$HOME/.espressif/python_env/idf6.0_py3.14_env/bin/mpremote\" connect '$PICO_PORT' exec 'import _honch_core; print(\"honch core ok\")'"
+  remote_workspace "cd SDK/ports/micropython && \"\$HOME/.espressif/python_env/idf6.0_py3.14_env/bin/mpremote\" connect '$PICO_PORT' exec 'import honch; print(\"honch wrapper ok\")'"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    help|-h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+command="${1:-help}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
+
+case "$command" in
+  help) usage ;;
+  print-env) cmd_print_env ;;
+  sync) cmd_sync ;;
+  setup) cmd_setup ;;
+  remote)
+    if [[ $# -eq 0 ]]; then
+      echo "remote requires a command" >&2
+      exit 2
+    fi
+    remote_workspace "$*"
+    ;;
+  remote-tty)
+    if [[ $# -eq 0 ]]; then
+      echo "remote-tty requires a command" >&2
+      exit 2
+    fi
+    remote_workspace_tty "$*"
+    ;;
+  sandbox) cmd_sandbox "$@" ;;
+  start) cmd_start ;;
+  stop) cmd_stop ;;
+  status) cmd_status ;;
+  esp32) cmd_esp32 "$@" ;;
+  pico) cmd_pico ;;
+  *)
+    echo "unknown command: $command" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

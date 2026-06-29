@@ -144,6 +144,50 @@ func TestStartBackgroundCommandPassesConfiguredEnv(t *testing.T) {
 	}
 }
 
+func TestStartDockerCommandUsesConfiguredDockerHost(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "platform", "infra")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(root, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(root, "docker-host.txt")
+	docker := filepath.Join(binDir, "docker")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$DOCKER_HOST\" > " + output + "\n"
+	if err := os.WriteFile(docker, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+
+	cfg := config.Config{
+		Repos:   config.ReposConfig{Platform: "platform"},
+		Sandbox: config.SandboxConfig{StateDir: ".state", DockerHost: "ssh://docker.example"},
+		Stack: config.StackConfig{StartCommands: []config.CommandConfig{
+			{
+				Repo:       "platform",
+				WorkingDir: "infra",
+				Args:       []string{"docker", "compose", "up", "-d"},
+			},
+		}},
+	}
+	service := New(root)
+	service.SkipMigrations = true
+
+	if err := service.Start(context.Background(), cfg); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	data, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(data), "ssh://docker.example\n"; got != want {
+		t.Fatalf("DOCKER_HOST = %q, want %q", got, want)
+	}
+}
+
 func TestStartWaitsForPostgresReadinessBeforeMigrationsAndSeed(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "platform")

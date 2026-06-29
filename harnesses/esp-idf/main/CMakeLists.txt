@@ -5,7 +5,7 @@ idf_component_register(
         "sandbox_control.c"
         "sandbox_network.c"
     INCLUDE_DIRS "."
-    REQUIRES esp_eth esp_netif esp_driver_uart espressif__cjson espressif__dp83848 nvs_flash honch
+    REQUIRES esp_eth esp_netif esp_wifi esp_driver_gpio esp_driver_uart nvs_flash espressif__cjson espressif__dp83848 honch
 )
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE

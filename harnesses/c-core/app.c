@@ -31,7 +31,6 @@ honch_status_t sandbox_app_init(sandbox_app_t *app, const sandbox_app_config_t *
         .queue_directory = settings->queue_directory,
         .batch_size = 5,
         .transport_timeout_ms = 3000,
-        .disable_background_flush = 1,
         .battery_callback = sandbox_battery_level,
         .battery_low_threshold = 15,
     };
@@ -70,7 +69,10 @@ honch_status_t sandbox_app_track(sandbox_app_t *app, const char *event, const ch
     if (!app || !app->client) {
         return HONCH_ERROR_INVALID_ARGUMENT;
     }
-    return honch_track(app->client, event, properties_json);
+    const honch_property_t properties[] = {
+        honch_prop("properties_json", honch_str(properties_json ? properties_json : "{}"))
+    };
+    return honch_track(app->client, event, properties, 1u);
 }
 
 honch_status_t sandbox_app_flush(sandbox_app_t *app)

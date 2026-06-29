@@ -25,6 +25,7 @@ coverage.out
 # Local sandbox state
 .honch-sandbox/
 .honch-sandbox.yaml
+.remote-dev.env
 
 # Harness build outputs
 harnesses/esp-idf/build/

@@ -15,11 +15,17 @@ func (s Service) applyPlatformMigrations(ctx context.Context, cfg config.Config)
 	if cfg.Repos.Platform == "" {
 		return nil
 	}
-	if err := s.applyPostgresPrerequisites(ctx); err != nil {
+	if err := s.applyPostgresPrerequisites(ctx, cfg); err != nil {
 		return err
 	}
 	backendDir := filepath.Join(s.resolve(cfg.Repos.Platform), "backend")
-	return run(ctx, backendDir, "bun", "run", "db:migrate")
+	return runCommand(ctx, backendDir, platformMigrationEnv(cfg), "bun", "run", "db:migrate")
+}
+
+func platformMigrationEnv(cfg config.Config) map[string]string {
+	return map[string]string{
+		"DATABASE_URL": fmt.Sprintf("postgresql://platform:platform@%s:5432/platform", config.ServiceHost(cfg)),
+	}
 }
 
 func (s Service) shouldApplyPlatformMigrations(cfg config.Config) (bool, error) {
@@ -39,28 +45,28 @@ func (s Service) shouldApplyPlatformMigrations(cfg config.Config) (bool, error) 
 	return true, nil
 }
 
-func (s Service) applyPostgresPrerequisites(ctx context.Context) error {
-	return run(ctx, s.Root, "docker", "exec", "-i", "infra-postgres-1", "psql", "-U", "platform", "-d", "platform", "-c", PostgresPrerequisiteSQL())
+func (s Service) applyPostgresPrerequisites(ctx context.Context, cfg config.Config) error {
+	return runCommand(ctx, s.Root, config.DockerEnv(cfg), "docker", "exec", "-i", "infra-postgres-1", "psql", "-U", "platform", "-d", "platform", "-c", PostgresPrerequisiteSQL())
 }
 
 func (s Service) seedSandboxProject(ctx context.Context, cfg config.Config) error {
 	if !sandboxProjectConfigured(cfg) {
 		return nil
 	}
-	return run(ctx, s.Root, "docker", "exec", "-i", "infra-postgres-1", "psql", "-U", "platform", "-d", "platform", "-c", SandboxSeedSQL(cfg))
+	return runCommand(ctx, s.Root, config.DockerEnv(cfg), "docker", "exec", "-i", "infra-postgres-1", "psql", "-U", "platform", "-d", "platform", "-c", SandboxSeedSQL(cfg))
 }
 
 func sandboxProjectConfigured(cfg config.Config) bool {
 	return cfg.Sandbox.ProjectID != "" && cfg.Sandbox.Token != ""
 }
 
-func (s Service) waitForPostgresReady(ctx context.Context, timeout time.Duration) error {
+func (s Service) waitForPostgresReady(ctx context.Context, cfg config.Config, timeout time.Duration) error {
 	if _, err := exec.LookPath("docker"); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(timeout)
 	for {
-		if err := run(ctx, s.Root, "docker", "exec", "-i", "infra-postgres-1", "pg_isready", "-U", "platform", "-d", "platform"); err == nil {
+		if err := runCommand(ctx, s.Root, config.DockerEnv(cfg), "docker", "exec", "-i", "infra-postgres-1", "pg_isready", "-U", "platform", "-d", "platform"); err == nil {
 			return nil
 		}
 		if time.Now().After(deadline) {

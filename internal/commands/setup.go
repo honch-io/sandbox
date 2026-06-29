@@ -84,7 +84,7 @@ func setupDockerImagesAction(cfg config.Config) setupAction {
 		Summary: "pull required Docker images",
 		Command: "honch sandbox images pull",
 		Run: func(ctx context.Context, stdin io.Reader, stdout io.Writer, stderr io.Writer) error {
-			return pullDockerImages(ctx, stdin, stdout, stderr, cfg.Stack.Images)
+			return pullDockerImages(ctx, stdin, stdout, stderr, cfg, cfg.Stack.Images)
 		},
 	}
 }
@@ -105,9 +105,6 @@ func setupHostToolAction(name string) setupAction {
 	if runtime.GOOS == "darwin" && commandStatus("brew") != "missing" {
 		if formula := brewPackageForTool(name); formula != "" {
 			command := "brew install " + formula
-			if name == "docker" {
-				command = "brew install --cask docker"
-			}
 			return setupShellAction(name, "install "+name, command)
 		}
 	}

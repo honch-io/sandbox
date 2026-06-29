@@ -87,6 +87,13 @@ static void handle_control_line(const char *line)
         return;
     }
 
+    if (strcmp(action->valuestring, "panic") == 0) {
+        printf("{\"ok\":true,\"panic\":true}\n");
+        fflush(stdout);
+        cJSON_Delete(root);
+        abort();
+    }
+
     printf("{\"ok\":false,\"error\":\"unknown_action\"}\n");
     fflush(stdout);
     cJSON_Delete(root);
@@ -113,5 +120,8 @@ void sandbox_control_start(void)
         ESP_LOGW(TAG, "UART control driver install failed: %s", esp_err_to_name(err));
     }
     uart_vfs_dev_use_driver(CONFIG_ESP_CONSOLE_UART_NUM);
-    xTaskCreate(control_task, "honch_control", 4096, NULL, 5, NULL);
+    // 8192: the coredump upload path (esp_core_dump_image_get + esp_partition_read
+    // + the HTTP post_chunk) needs more stack than the 4096 a plain event flush
+    // uses; at 4096 the control task stack-overflows mid coredump upload.
+    xTaskCreate(control_task, "honch_control", 8192, NULL, 5, NULL);
 }

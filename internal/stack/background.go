@@ -38,7 +38,7 @@ func (s Service) startBackground(ctx context.Context, dir string, cfg config.Con
 	cmd := exec.CommandContext(ctx, command.Args[0], command.Args[1:]...)
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
-	for key, val := range command.Env {
+	for key, val := range dockerCommandEnv(cfg, command) {
 		cmd.Env = append(cmd.Env, key+"="+val)
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}

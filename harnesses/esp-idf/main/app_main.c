@@ -37,7 +37,7 @@
 
 static const char *TAG = "honch_sandbox";
 
-extern volatile bool g_honch_connected;
+volatile bool g_honch_connected;
 
 #ifdef HONCH_SANDBOX_USE_WIFI
 #define WIFI_CONNECTED_BIT BIT0
@@ -71,6 +71,12 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t e
 static void sandbox_wifi_start(void)
 {
     s_wifi_event_group = xEventGroupCreate();
+    esp_err_t nvs_err = nvs_flash_init();
+    if (nvs_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        nvs_err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(nvs_err);
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_sta();
@@ -94,6 +100,7 @@ static void sandbox_wifi_start(void)
     };
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
 
@@ -135,13 +142,6 @@ static void sandbox_sync_time(void)
 
 void app_main(void)
 {
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
-
 #ifdef HONCH_SANDBOX_USE_WIFI
     sandbox_wifi_start();
     sandbox_sync_time();

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -239,12 +240,14 @@ func runEspIDFHardwareAdapter(cmd *cobra.Command, root string, cfg config.Config
 			{Key: "command", Value: "honch sandbox config set sandbox.proxy_bind 0.0.0.0"},
 		}))
 	}
-	wifiSSID := valueOr(opts.WiFiSSID, os.Getenv("HONCH_SANDBOX_WIFI_SSID"))
-	wifiPassword := valueOr(opts.WiFiPassword, os.Getenv("HONCH_SANDBOX_WIFI_PASSWORD"))
+	localSSID, localPassword, _ := sdkLocalWiFiDefaults(root)
+	wifiSSID := valueOr(opts.WiFiSSID, os.Getenv("HONCH_SANDBOX_WIFI_SSID"), localSSID)
+	wifiPassword := valueOr(opts.WiFiPassword, os.Getenv("HONCH_SANDBOX_WIFI_PASSWORD"), localPassword)
 	if wifiSSID == "" || wifiPassword == "" {
 		return errors.New(ui.FormatError("Wi-Fi credentials are required for ESP-IDF hardware runs", []ui.Row{
 			{Key: "flags", Value: "--wifi-ssid and --wifi-password"},
 			{Key: "env", Value: "HONCH_SANDBOX_WIFI_SSID and HONCH_SANDBOX_WIFI_PASSWORD"},
+			{Key: "file", Value: "../SDK/ports/esp-idf/local/sdkconfig.defaults"},
 		}))
 	}
 	endpoint, err := espIDFHardwareEndpoint(cfg, opts.DeviceEndpoint)
@@ -276,6 +279,41 @@ func runEspIDFHardwareAdapter(cmd *cobra.Command, root string, cfg config.Config
 		return errors.Join(err, clearErr)
 	}
 	return err
+}
+
+func sdkLocalWiFiDefaults(root string) (string, string, bool) {
+	defaults, err := readSDKLocalDefaults(filepath.Join(root, "..", "SDK", "ports", "esp-idf", "local", "sdkconfig.defaults"))
+	if err != nil {
+		return "", "", false
+	}
+	ssid := defaults["CONFIG_WIFI_SSID"]
+	password := defaults["CONFIG_WIFI_PASSWORD"]
+	return ssid, password, ssid != "" && password != ""
+}
+
+func readSDKLocalDefaults(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	values := map[string]string{}
+	for _, rawLine := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if unquoted, err := strconv.Unquote(value); err == nil {
+			value = unquoted
+		}
+		values[key] = value
+	}
+	return values, nil
 }
 
 func saveRunnerSessionState(manager session.Manager, runnerState session.RunnerState, proxyState session.ProxyState) error {

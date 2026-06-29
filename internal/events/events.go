@@ -65,14 +65,15 @@ func (c Client) query(ctx context.Context, cfg config.Config, query string) (str
 	if client == nil {
 		client = http.DefaultClient
 	}
-	endpoint := url.URL{Scheme: "http", Host: fmt.Sprintf("127.0.0.1:%d", cfg.Ports.ClickHouse), Path: "/"}
+	clickHouseHost := fmt.Sprintf("%s:%d", config.ServiceHost(cfg), cfg.Ports.ClickHouse)
+	endpoint := url.URL{Scheme: "http", Host: clickHouseHost, Path: "/"}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(query))
 	if err != nil {
 		return "", err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("ClickHouse is not reachable on 127.0.0.1:%d: %w\nstart the stack with `honch sandbox start`, then check health with `honch sandbox status`", cfg.Ports.ClickHouse, err)
+		return "", fmt.Errorf("ClickHouse is not reachable on %s: %w\nstart the stack with `honch sandbox start`, then check health with `honch sandbox status`", clickHouseHost, err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
