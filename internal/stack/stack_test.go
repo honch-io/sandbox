@@ -164,7 +164,7 @@ func TestStartDockerCommandUsesConfiguredDockerHost(t *testing.T) {
 
 	cfg := config.Config{
 		Repos:   config.ReposConfig{Platform: "platform"},
-		Sandbox: config.SandboxConfig{StateDir: ".state", DockerHost: "tcp://192.168.1.146:2375"},
+		Sandbox: config.SandboxConfig{StateDir: ".state", DockerHost: "ssh://docker.example"},
 		Stack: config.StackConfig{StartCommands: []config.CommandConfig{
 			{
 				Repo:       "platform",
@@ -183,7 +183,7 @@ func TestStartDockerCommandUsesConfiguredDockerHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := string(data), "tcp://192.168.1.146:2375\n"; got != want {
+	if got, want := string(data), "ssh://docker.example\n"; got != want {
 		t.Fatalf("DOCKER_HOST = %q, want %q", got, want)
 	}
 }

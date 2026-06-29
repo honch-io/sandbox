@@ -78,7 +78,7 @@ func dockerCommandEnv(cfg config.Config, command config.CommandConfig) map[strin
 	for key, value := range command.Env {
 		env[key] = value
 	}
-	if len(command.Args) > 0 && command.Args[0] == "docker" {
+	if commandUsesDocker(command.Args) {
 		for key, value := range config.DockerEnv(cfg) {
 			env[key] = value
 		}
@@ -87,6 +87,16 @@ func dockerCommandEnv(cfg config.Config, command config.CommandConfig) map[strin
 		return nil
 	}
 	return env
+}
+
+func commandUsesDocker(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	if args[0] == "docker" {
+		return true
+	}
+	return args[0] == "sh" && len(args) >= 3 && strings.Contains(args[2], "docker ")
 }
 
 func splitCommands(commands []config.CommandConfig) ([]config.CommandConfig, []config.CommandConfig) {

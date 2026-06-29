@@ -130,13 +130,18 @@ Defaults live in `config/default.yaml`:
 - worker port: `8080`
 - ClickHouse port: `8123`
 - proxy port: `18080`
+- service host: `127.0.0.1`
+- Docker host: unset by default, so the current Docker CLI context is used
 
 Override those values from the sandbox repo root with `.honch-sandbox.yaml` when
-your local checkout is different.
+your local checkout is different. If your Docker services run on another host,
+set both `sandbox.docker_host` and `sandbox.service_host` in that ignored local
+file.
 
 Real ESP-IDF hardware runs need the sandbox proxy to listen on an address the
 device can reach. Set `sandbox.proxy_bind` to `0.0.0.0`, restart the stack, and
-pass Wi-Fi credentials with flags or environment variables:
+pass Wi-Fi credentials with flags, environment variables, or the ignored shared
+SDK file at `../SDK/ports/esp-idf/local/sdkconfig.defaults`.
 
 Warning: `0.0.0.0` exposes the sandbox proxy to other devices on your LAN. Use
 it only while running real hardware, then switch back to loopback.
@@ -154,6 +159,32 @@ HONCH_SANDBOX_WIFI_PASSWORD="your-password" \
 ./honch sandbox stop
 ./honch sandbox start
 ```
+
+To avoid retyping hardware values for SDK examples and sandbox hardware runs,
+copy `../SDK/ports/esp-idf/local/sdkconfig.defaults.example` to
+`../SDK/ports/esp-idf/local/sdkconfig.defaults` and edit it locally. That file
+is intentionally ignored by Git.
+
+### Run the stack on another box (optional)
+
+You can offload the sandbox + on-device harnesses to another machine — handy when
+your laptop does the editing and a separate Linux box has the ESP32/Pico W
+attached (and the heavier toolchains). Use the `remote-dev` helper from this repo:
+
+```sh
+scripts/remote-dev sync
+scripts/remote-dev remote 'cd sandbox && go test ./internal/config'
+scripts/remote-dev start
+scripts/remote-dev esp32
+scripts/remote-dev pico
+```
+
+It rsyncs this workspace to that box over SSH and runs commands from the copy
+there; your laptop stays the source of truth and the other box is just the
+executor with the USB devices and local services. It's entirely optional — skip
+it if you run everything locally. Point it at your own host by copying
+`.remote-dev.env.example` to `sandbox/.remote-dev.env` (gitignored) and setting
+`REMOTE_HOST`.
 
 Use `./honch sandbox flags` to inspect command-specific flags without opening
 each subcommand help screen.

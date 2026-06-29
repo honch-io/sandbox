@@ -136,8 +136,14 @@ int sandbox_control_run(sandbox_app_t *app, const char *control_path)
             char *newline = NULL;
             while ((newline = strchr(start, '\n')) != NULL) {
                 *newline = '\0';
-                snprintf(line, sizeof(line), "%s", start);
-                handle_line(app, line);
+                size_t line_len = (size_t)(newline - start);
+                if (line_len >= sizeof(line)) {
+                    fprintf(stderr, "control line too long, dropping input\n");
+                } else {
+                    memcpy(line, start, line_len);
+                    line[line_len] = '\0';
+                    handle_line(app, line);
+                }
                 start = newline + 1;
             }
             size_t remaining = strlen(start);

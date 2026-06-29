@@ -260,7 +260,7 @@ func newStatusCommand(deps Dependencies) *cobra.Command {
 
 func serviceHealthRows(ctx context.Context, root string, cfg config.Config, state session.State, stateErr error) []ui.Row {
 	checkTimeout := 750 * time.Millisecond
-	dockerServiceHost := config.DefaultDockerServiceHost
+	dockerServiceHost := config.ServiceHost(cfg)
 	return []ui.Row{
 		{Key: "postgres", Value: health.TCPStatus(ctx, dockerServiceHost+":5432", checkTimeout)},
 		{Key: "redis", Value: health.TCPStatus(ctx, dockerServiceHost+":6379", checkTimeout)},

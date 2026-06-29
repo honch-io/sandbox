@@ -79,11 +79,13 @@ func boolCount(values ...bool) int {
 	return count
 }
 
-func valueOr(value string, fallback string) string {
-	if value == "" {
-		return fallback
+func valueOr(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
 	}
-	return value
+	return ""
 }
 
 func confirm(in io.Reader, out io.Writer, prompt string) (bool, error) {

@@ -51,3 +51,32 @@ func TestSandboxRunRejectsInactiveSandboxAndSkipsBuild(t *testing.T) {
 		t.Fatalf("run reached the build step even though the sandbox was not live: %v", err)
 	}
 }
+
+func TestSandboxRunHardwareReadsWiFiFromSDKLocalDefaults(t *testing.T) {
+	rootDir := t.TempDir()
+	sdkLocalDir := filepath.Clean(filepath.Join(rootDir, "..", "SDK", "ports", "esp-idf", "local"))
+	if err := os.MkdirAll(sdkLocalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	localDefaults := strings.Join([]string{
+		`CONFIG_WIFI_SSID="lab-network"`,
+		`CONFIG_WIFI_PASSWORD="lab-password"`,
+		`CONFIG_HONCH_API_KEY="local-api-key"`,
+		`CONFIG_HONCH_HOST="http://192.168.1.122:8001"`,
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(sdkLocalDir, "sdkconfig.defaults"), []byte(localDefaults), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ssid, password, ok := sdkLocalWiFiDefaults(rootDir)
+	if !ok {
+		t.Fatal("local SDK Wi-Fi defaults were not found")
+	}
+	if ssid != "lab-network" {
+		t.Fatalf("ssid = %q", ssid)
+	}
+	if password != "lab-password" {
+		t.Fatalf("password = %q", password)
+	}
+}

@@ -19,7 +19,13 @@ func (s Service) applyPlatformMigrations(ctx context.Context, cfg config.Config)
 		return err
 	}
 	backendDir := filepath.Join(s.resolve(cfg.Repos.Platform), "backend")
-	return run(ctx, backendDir, "bun", "run", "db:migrate")
+	return runCommand(ctx, backendDir, platformMigrationEnv(cfg), "bun", "run", "db:migrate")
+}
+
+func platformMigrationEnv(cfg config.Config) map[string]string {
+	return map[string]string{
+		"DATABASE_URL": fmt.Sprintf("postgresql://platform:platform@%s:5432/platform", config.ServiceHost(cfg)),
+	}
 }
 
 func (s Service) shouldApplyPlatformMigrations(cfg config.Config) (bool, error) {

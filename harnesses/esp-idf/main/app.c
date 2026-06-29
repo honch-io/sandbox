@@ -22,8 +22,12 @@ honch_err_t sandbox_app_init(const sandbox_app_config_t *settings)
         .event_buffer_size = sizeof(s_event_buffer),
         .flush_interval_seconds = 3600,
         .flush_event_threshold = 100,
+        // Small spacing so a multi-chunk coredump uploads promptly under the
+        // driver's repeated flushes (default 15s would take minutes for ~30 chunks).
+        .flush_min_interval_ms = 500,
         .battery_callback = sandbox_battery_level,
         .battery_low_threshold = 15,
+        .enable_error_tracking = true,
     };
 
     honch_err_t err = honch_init(&config);
@@ -40,7 +44,10 @@ void sandbox_app_set_battery(int level)
 
 honch_err_t sandbox_app_track(const char *event, const char *properties_json)
 {
-    return honch_track(event, properties_json);
+    const honch_property_t properties[] = {
+        honch_prop("properties_json", honch_str(properties_json ? properties_json : "{}"))
+    };
+    return honch_track(event, properties, 1u);
 }
 
 honch_err_t sandbox_app_flush(void)

@@ -40,6 +40,9 @@ func TestImagesListShowsLongImageNames(t *testing.T) {
 
 func TestImagesListUsesConfiguredDockerHost(t *testing.T) {
 	rootDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootDir, ".honch-sandbox.yaml"), []byte("sandbox:\n  docker_host: ssh://docker.example\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	binDir := filepath.Join(rootDir, "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -66,7 +69,7 @@ func TestImagesListUsesConfiguredDockerHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), "tcp://192.168.1.146:2375\n") {
+	if !strings.Contains(string(data), "ssh://docker.example\n") {
 		t.Fatalf("docker did not receive remote DOCKER_HOST:\n%s", string(data))
 	}
 }

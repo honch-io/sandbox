@@ -63,7 +63,16 @@ sandbox:
 	}
 }
 
-func TestLoadDefaultsDockerHostToRemoteDockerPC(t *testing.T) {
+func assertMapMissing(t *testing.T, got map[string]string, keys ...string) {
+	t.Helper()
+	for _, key := range keys {
+		if _, ok := got[key]; ok {
+			t.Fatalf("%s = %q, want key absent", key, got[key])
+		}
+	}
+}
+
+func TestLoadDefaultsDockerHostToLocalDocker(t *testing.T) {
 	root := t.TempDir()
 
 	cfg, err := Load(root)
@@ -71,8 +80,28 @@ func TestLoadDefaultsDockerHostToRemoteDockerPC(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	if cfg.Sandbox.DockerHost != "tcp://192.168.1.146:2375" {
+	if cfg.Sandbox.DockerHost != "" {
 		t.Fatalf("DockerHost = %q", cfg.Sandbox.DockerHost)
+	}
+	if cfg.Sandbox.ServiceHost != "127.0.0.1" {
+		t.Fatalf("ServiceHost = %q", cfg.Sandbox.ServiceHost)
+	}
+}
+
+func TestDockerEnvUsesLocalDockerWhenHostIsUnset(t *testing.T) {
+	env := DockerEnv(Config{})
+
+	assertMapMissing(t, env, "DOCKER_HOST", "DOCKER_CONFIG")
+}
+
+func TestDockerEnvUsesConfiguredRemoteHost(t *testing.T) {
+	env := DockerEnv(Config{Sandbox: SandboxConfig{DockerHost: "ssh://docker.example"}})
+
+	if env["DOCKER_HOST"] != "ssh://docker.example" {
+		t.Fatalf("DOCKER_HOST = %q", env["DOCKER_HOST"])
+	}
+	if env["DOCKER_CONFIG"] == "" {
+		t.Fatal("DOCKER_CONFIG is empty for configured remote Docker")
 	}
 }
 
@@ -118,11 +147,11 @@ func TestLoadDefaultsUsePlatformWorkspaceServices(t *testing.T) {
 	}
 	assertMapEntries(t, captureCommand.Env, map[string]string{
 		"SERVER_ADDR":          "0.0.0.0:8001",
-		"PUBSUB_EMULATOR_HOST": "192.168.1.146:8085",
+		"PUBSUB_EMULATOR_HOST": "127.0.0.1:8085",
 		"PUBSUB_PROJECT_ID":    "platform-local",
 		"PUBSUB_EVENTS_TOPIC":  "events-raw",
-		"REDIS_URL":            "redis://192.168.1.146:6379",
-		"DATABASE_URL":         "postgresql://platform:platform@192.168.1.146:5432/platform",
+		"REDIS_URL":            "redis://127.0.0.1:6379",
+		"DATABASE_URL":         "postgresql://platform:platform@127.0.0.1:5432/platform",
 	})
 	if workerCommand == nil {
 		t.Fatal("worker start command missing")
@@ -134,14 +163,46 @@ func TestLoadDefaultsUsePlatformWorkspaceServices(t *testing.T) {
 		t.Fatalf("worker args = %#v, want %#v", got, want)
 	}
 	assertMapEntries(t, workerCommand.Env, map[string]string{
-		"PUBSUB_EMULATOR_HOST":       "192.168.1.146:8085",
+		"PORT":                         "8080",
+		"PUBSUB_EMULATOR_HOST":       "127.0.0.1:8085",
 		"PUBSUB_PROJECT_ID":          "platform-local",
 		"EVENTS_PUBSUB_TOPIC":        "events-raw",
 		"EVENTS_PUBSUB_SUBSCRIPTION": "events-raw-subscription",
-		"CLICKHOUSE_URL":             "http://192.168.1.146:8123",
+		"CLICKHOUSE_URL":             "http://127.0.0.1:8123",
 		"CLICKHOUSE_DATABASE":        "platform",
-		"DATABASE_URL":               "postgresql://platform:platform@192.168.1.146:5432/platform",
-		"REDIS_URL":                  "redis://192.168.1.146:6379/0",
+		"DATABASE_URL":               "postgresql://platform:platform@127.0.0.1:5432/platform",
+		"REDIS_URL":                  "redis://127.0.0.1:6379/0",
+	})
+}
+
+func TestLoadInterpolatesServiceHostOverride(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".honch-sandbox.yaml"), []byte("sandbox:\n  service_host: 10.0.0.25\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if cfg.Sandbox.ServiceHost != "10.0.0.25" {
+		t.Fatalf("ServiceHost = %q", cfg.Sandbox.ServiceHost)
+	}
+	var captureCommand *CommandConfig
+	for index := range cfg.Stack.StartCommands {
+		if cfg.Stack.StartCommands[index].Repo == "capture" {
+			captureCommand = &cfg.Stack.StartCommands[index]
+			break
+		}
+	}
+	if captureCommand == nil {
+		t.Fatal("capture start command missing")
+	}
+	assertMapEntries(t, captureCommand.Env, map[string]string{
+		"PUBSUB_EMULATOR_HOST": "10.0.0.25:8085",
+		"REDIS_URL":            "redis://10.0.0.25:6379",
+		"DATABASE_URL":         "postgresql://platform:platform@10.0.0.25:5432/platform",
 	})
 }
 
@@ -252,7 +313,7 @@ func TestLoadFallsBackToLoopbackForEmptyProxyBindOverride(t *testing.T) {
 	}
 }
 
-func TestLoadFallsBackToRemoteDockerPCForEmptyDockerHostOverride(t *testing.T) {
+func TestLoadFallsBackToLocalDockerForEmptyDockerHostOverride(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, ".honch-sandbox.yaml"), []byte("sandbox:\n  docker_host: \"\"\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -262,8 +323,8 @@ func TestLoadFallsBackToRemoteDockerPCForEmptyDockerHostOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if cfg.Sandbox.DockerHost != "tcp://192.168.1.146:2375" {
-		t.Fatalf("DockerHost = %q, want remote Docker PC fallback", cfg.Sandbox.DockerHost)
+	if cfg.Sandbox.DockerHost != "" {
+		t.Fatalf("DockerHost = %q, want local Docker fallback", cfg.Sandbox.DockerHost)
 	}
 }
 

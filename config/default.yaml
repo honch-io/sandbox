@@ -18,7 +18,8 @@ sandbox:
   clickhouse_database: platform
   endpoint_url: http://127.0.0.1:8001
   proxy_bind: 127.0.0.1
-  docker_host: tcp://192.168.1.146:2375
+  docker_host: ""
+  service_host: 127.0.0.1
   state_dir: .honch-sandbox
 stack:
   images:
@@ -30,32 +31,33 @@ stack:
     - repo: platform
       working_dir: infra
       args: [docker, compose, up, -d]
-      env:
-        DOCKER_HOST: tcp://192.168.1.146:2375
     - repo: capture
       args: [cargo, run, -p, honch-capture]
       env:
-        SERVER_ADDR: 0.0.0.0:8001
-        PUBSUB_EMULATOR_HOST: 192.168.1.146:8085
+        SERVER_ADDR: 0.0.0.0:${ports.capture}
+        PUBSUB_EMULATOR_HOST: ${sandbox.service_host}:8085
         PUBSUB_PROJECT_ID: platform-local
         PUBSUB_EVENTS_TOPIC: events-raw
-        REDIS_URL: redis://192.168.1.146:6379
-        DATABASE_URL: postgresql://platform:platform@192.168.1.146:5432/platform
+        REDIS_URL: redis://${sandbox.service_host}:6379
+        DATABASE_URL: postgresql://platform:platform@${sandbox.service_host}:5432/platform
         RATE_LIMIT_PER_SECOND: "1000"
         RUST_LOG: honch_capture=debug,tower_http=debug
+        COREDUMP_BUCKET: honch-coredumps
+        STORAGE_EMULATOR_HOST: http://${sandbox.service_host}:4443
       background: true
       log: capture.log
     - repo: worker
       args: [cargo, run, -p, honch-unified-worker]
       env:
-        PUBSUB_EMULATOR_HOST: 192.168.1.146:8085
+        PORT: ${ports.worker}
+        PUBSUB_EMULATOR_HOST: ${sandbox.service_host}:8085
         PUBSUB_PROJECT_ID: platform-local
         EVENTS_PUBSUB_TOPIC: events-raw
         EVENTS_PUBSUB_SUBSCRIPTION: events-raw-subscription
-        CLICKHOUSE_URL: http://192.168.1.146:8123
-        CLICKHOUSE_DATABASE: platform
-        DATABASE_URL: postgresql://platform:platform@192.168.1.146:5432/platform
-        REDIS_URL: redis://192.168.1.146:6379/0
+        CLICKHOUSE_URL: http://${sandbox.service_host}:${ports.clickhouse}
+        CLICKHOUSE_DATABASE: ${sandbox.clickhouse_database}
+        DATABASE_URL: postgresql://platform:platform@${sandbox.service_host}:5432/platform
+        REDIS_URL: redis://${sandbox.service_host}:6379/0
         RUST_LOG: honch_unified_worker=info
       background: true
       log: worker.log
@@ -63,5 +65,3 @@ stack:
     - repo: platform
       working_dir: infra
       args: [docker, compose, down]
-      env:
-        DOCKER_HOST: tcp://192.168.1.146:2375

@@ -73,6 +73,8 @@ var configSections = []configSection{
 			{Key: "sandbox.state_dir", Name: "state_dir", TypeLabel: "path", Kind: configFieldString, Path: []string{"sandbox", "state_dir"}, Read: func(cfg config.Config) any { return cfg.Sandbox.StateDir }},
 			{Key: "sandbox.endpoint_url", Name: "endpoint_url", TypeLabel: "url", Kind: configFieldString, Path: []string{"sandbox", "endpoint_url"}, Read: func(cfg config.Config) any { return cfg.Sandbox.EndpointURL }},
 			{Key: "sandbox.proxy_bind", Name: "proxy_bind", TypeLabel: "host", Kind: configFieldString, Path: []string{"sandbox", "proxy_bind"}, Read: func(cfg config.Config) any { return cfg.Sandbox.ProxyBind }},
+			{Key: "sandbox.service_host", Name: "service_host", TypeLabel: "host", Kind: configFieldString, Path: []string{"sandbox", "service_host"}, Read: func(cfg config.Config) any { return cfg.Sandbox.ServiceHost }},
+			{Key: "sandbox.docker_host", Name: "docker_host", TypeLabel: "url", Kind: configFieldString, Path: []string{"sandbox", "docker_host"}, Read: func(cfg config.Config) any { return cfg.Sandbox.DockerHost }},
 			{Key: "sandbox.idf_path", Name: "idf_path", TypeLabel: "path", Kind: configFieldString, Path: []string{"sandbox", "idf_path"}, Read: func(cfg config.Config) any { return cfg.Sandbox.IDFPath }},
 		},
 	},
@@ -290,6 +292,8 @@ func starterConfigContent(cfg config.Config) string {
 		Token              string `yaml:"token"`
 		ClickHouseDatabase string `yaml:"clickhouse_database"`
 		ProxyBind          string `yaml:"proxy_bind"`
+		ServiceHost        string `yaml:"service_host"`
+		DockerHost         string `yaml:"docker_host,omitempty"`
 		StateDir           string `yaml:"state_dir"`
 	}
 	content, err := yaml.Marshal(struct {
@@ -320,6 +324,8 @@ func starterConfigContent(cfg config.Config) string {
 			Token:              cfg.Sandbox.Token,
 			ClickHouseDatabase: cfg.Sandbox.ClickHouseDatabase,
 			ProxyBind:          cfg.Sandbox.ProxyBind,
+			ServiceHost:        cfg.Sandbox.ServiceHost,
+			DockerHost:         cfg.Sandbox.DockerHost,
 			StateDir:           cfg.Sandbox.StateDir,
 		},
 	})

@@ -141,3 +141,22 @@ func TestESPIDFHarnessEmitsBootSmokeEvent(t *testing.T) {
 		t.Fatalf("esp-idf hardware harness should sync time before emitting smoke events")
 	}
 }
+
+func TestESPIDFHarnessCanTriggerRealPanicForFaultCapture(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, "harnesses", "esp-idf", "main", "sandbox_control.c"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if !strings.Contains(text, `strcmp(action->valuestring, "panic") == 0`) {
+		t.Fatalf("esp-idf harness should expose a panic control action for real fault-capture validation")
+	}
+	if !strings.Contains(text, "abort();") {
+		t.Fatalf("esp-idf panic control action should trigger a real abort/panic reset")
+	}
+}

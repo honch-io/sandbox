@@ -65,7 +65,7 @@ func (c Client) query(ctx context.Context, cfg config.Config, query string) (str
 	if client == nil {
 		client = http.DefaultClient
 	}
-	clickHouseHost := fmt.Sprintf("%s:%d", config.DefaultDockerServiceHost, cfg.Ports.ClickHouse)
+	clickHouseHost := fmt.Sprintf("%s:%d", config.ServiceHost(cfg), cfg.Ports.ClickHouse)
 	endpoint := url.URL{Scheme: "http", Host: clickHouseHost, Path: "/"}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), strings.NewReader(query))
 	if err != nil {
